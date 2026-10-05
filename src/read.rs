@@ -1,6 +1,6 @@
 //! PSD/PSB reader. Accepts the subset the writer emits.
 
-use crate::{Blend, Channels, Document, Error, Format, Mask, Rect, Result};
+use crate::{Blend, Channels, Document, Error, Format, Image, Mask, Rect, Result, rle};
 
 struct Cursor<'a> {
     data: &'a [u8],
@@ -168,7 +168,6 @@ struct RawLayer {
     section_blend: Option<Blend>,
 }
 
-#[allow(dead_code)]
 struct LayerRecords<'a> {
     channels: Channels,
     records: Vec<RawLayer>,
@@ -413,6 +412,161 @@ fn read_record(cursor: &mut Cursor<'_>, format: Format) -> Result<RawLayer> {
     })
 }
 
+#[allow(dead_code)]
+struct DecodedLayer {
+    record: RawLayer,
+    pixels: Image,
+}
+
+#[allow(dead_code)]
+struct LayerData {
+    channels: Channels,
+    layers: Vec<DecodedLayer>,
+}
+
+fn rect_area(rect: Rect) -> Result<usize> {
+    if rect.bottom < rect.top || rect.right < rect.left {
+        return Err(Error::Malformed("rect"));
+    }
+    rect.area().ok_or(Error::Malformed("rect"))
+}
+
+fn row_count(cursor: &mut Cursor<'_>, format: Format) -> Result<u64> {
+    match format {
+        Format::Psd => cursor.u16().map(u64::from),
+        Format::Psb => cursor.u32().map(u64::from),
+    }
+}
+
+fn decode_plane(mut data: Cursor<'_>, rect: Rect, format: Format) -> Result<Vec<u8>> {
+    let area = rect_area(rect)?;
+    let malformed = || Error::Malformed("channel data");
+    let compression = data.u16().map_err(|_| malformed())?;
+    if !matches!(compression, 0 | 1) {
+        return Err(Error::Unsupported("compression"));
+    }
+    if area == 0 {
+        return if data.remaining() == 0 {
+            Ok(Vec::new())
+        } else {
+            Err(malformed())
+        };
+    }
+    let mut plane = Vec::new();
+    if compression == 0 {
+        if data.remaining() != area {
+            return Err(malformed());
+        }
+        plane.try_reserve_exact(area).map_err(|_| malformed())?;
+        plane.extend_from_slice(data.take(area as u64).map_err(|_| malformed())?);
+    } else {
+        let count_size = if format == Format::Psd { 2 } else { 4 };
+        let count_bytes = rect
+            .height()
+            .checked_mul(count_size)
+            .ok_or_else(malformed)?;
+        let counts = data.take(count_bytes as u64).map_err(|_| malformed())?;
+        let mut sizes = Cursor::new(counts);
+        let mut total = 0u64;
+        while sizes.remaining() != 0 {
+            total = total
+                .checked_add(row_count(&mut sizes, format).map_err(|_| malformed())?)
+                .ok_or_else(malformed)?;
+        }
+        if total != data.remaining() as u64 || area > data.remaining().saturating_mul(64) {
+            return Err(malformed());
+        }
+        plane.try_reserve_exact(area).map_err(|_| malformed())?;
+        let mut sizes = Cursor::new(counts);
+        for _ in 0..rect.height() {
+            let count = row_count(&mut sizes, format).map_err(|_| malformed())?;
+            let row = data.take(count).map_err(|_| malformed())?;
+            rle::decode_row(row, rect.width(), &mut plane).map_err(|_| malformed())?;
+        }
+    }
+    Ok(plane)
+}
+
+fn interleave(rect: Rect, planes: [Option<Vec<u8>>; 4]) -> Result<Image> {
+    let area = rect_area(rect)?;
+    let [red, green, blue, alpha] = planes;
+    let red = red.ok_or(Error::Malformed("channel data"))?;
+    let green = green.ok_or(Error::Malformed("channel data"))?;
+    let blue = blue.ok_or(Error::Malformed("channel data"))?;
+    if red.len() != area
+        || green.len() != area
+        || blue.len() != area
+        || alpha.as_ref().is_some_and(|plane| plane.len() != area)
+    {
+        return Err(Error::Malformed("channel data"));
+    }
+    let length = area.checked_mul(4).ok_or(Error::Malformed("rect"))?;
+    let mut data = Vec::new();
+    data.try_reserve_exact(length)
+        .map_err(|_| Error::Malformed("channel data"))?;
+    for i in 0..area {
+        data.extend_from_slice(&[
+            red[i],
+            green[i],
+            blue[i],
+            alpha.as_ref().map_or(255, |plane| plane[i]),
+        ]);
+    }
+    Ok(Image { rect, data })
+}
+
+fn read_channel_data(mut records: LayerRecords<'_>, format: Format) -> Result<LayerData> {
+    let mut layers = Vec::new();
+    layers
+        .try_reserve_exact(records.records.len())
+        .map_err(|_| Error::Malformed("channel data"))?;
+    for mut record in records.records {
+        let mut planes: [Option<Vec<u8>>; 4] = [None, None, None, None];
+        let mut mask_plane = None;
+        for &(id, length) in &record.channels {
+            let bytes = records.info.take(length)?;
+            if id == -3 {
+                continue;
+            }
+            let rect = if id == -2 {
+                record
+                    .mask
+                    .as_ref()
+                    .ok_or(Error::Malformed("mask block"))?
+                    .rect
+            } else {
+                record.rect
+            };
+            let plane = decode_plane(Cursor::new(bytes), rect, format)?;
+            match id {
+                0 => planes[0] = Some(plane),
+                1 => planes[1] = Some(plane),
+                2 => planes[2] = Some(plane),
+                -1 => planes[3] = Some(plane),
+                -2 => mask_plane = Some(plane),
+                _ => return Err(Error::Unsupported("channel id")),
+            }
+        }
+        match (record.mask.as_mut(), mask_plane) {
+            (Some(mask), Some(data)) => mask.data = data,
+            (None, None) => {}
+            _ => return Err(Error::Malformed("mask block")),
+        }
+        let pixels = interleave(record.rect, planes)?;
+        layers.push(DecodedLayer { record, pixels });
+    }
+    records.info.skip(records.info.remaining() as u64)?;
+    if let Some(mut section) = records.section {
+        let global_mask_len = u64::from(section.u32()?);
+        section.skip(global_mask_len)?;
+        section.skip(section.remaining() as u64)?;
+    }
+    Ok(LayerData {
+        channels: records.channels,
+        layers,
+    })
+}
+
 pub fn read(input: &[u8]) -> Result<Document> {
     let header = read_header(input)?;
     if header.depth != 8 {
@@ -436,6 +590,7 @@ pub fn read(input: &[u8]) -> Result<Document> {
     let colour_len = u64::from(cursor.u32()?);
     cursor.skip(colour_len)?;
     let _resources = read_resources(&mut cursor)?;
-    let _layers = read_layer_records(&mut cursor, header)?;
+    let records = read_layer_records(&mut cursor, header)?;
+    let _layers = read_channel_data(records, header.format)?;
     Err(Error::Unsupported("not implemented"))
 }
