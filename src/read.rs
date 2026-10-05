@@ -371,7 +371,7 @@ fn read_record(cursor: &mut Cursor<'_>, format: Format) -> Result<RawLayer> {
         let data = extra.take(length)?;
         match &key {
             b"luni" => name = read_unicode_name(data)?,
-            b"lsct" => {
+            b"lsct" | b"lsdk" => {
                 let mut divider = Cursor::new(data);
                 section = divider.u32()?;
                 section_blend = None;
