@@ -37,8 +37,9 @@ try {
     }
     foreach ($name in $Names) {
         $fixtureName = $name
-        $ours = Join-Path $root "target\softpsd-$name.psd"
-        $photoshop = Join-Path $root "tests\fixtures\ps27-$name.psd"
+        $extension = if ($name -ceq 'psb') { 'psb' } else { 'psd' }
+        $ours = Join-Path $root "target\softpsd-$name.$extension"
+        $photoshop = Join-Path $root "tests\fixtures\ps27-$name.$extension"
         if ($Make) {
             $stage = 'make Photoshop fixture'
             Invoke-FixtureGate {

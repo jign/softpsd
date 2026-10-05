@@ -8,13 +8,14 @@ pub struct Fixture {
 
 pub fn names() -> &'static [&'static str] {
     &[
-        "smoke", "alpha", "hidden", "clip", "nested", "empty", "name", "blends", "icc",
+        "smoke", "alpha", "hidden", "clip", "nested", "empty", "name", "blends", "icc", "psb",
     ]
 }
 
 pub fn fixture(name: &str) -> Fixture {
     match name {
         "smoke" => smoke(),
+        "psb" => psb(),
         "icc" => icc(),
         "blends" => blends(),
         "name" => unicode_name(),
@@ -136,9 +137,13 @@ impl<'a> Walker<'a> {
     }
 }
 
+pub fn extension(name: &str) -> &'static str {
+    if name == "psb" { "psb" } else { "psd" }
+}
+
 fn photoshop_profile(name: &str) -> Vec<u8> {
-    let path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/ps27-{name}.psd"));
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("tests/fixtures/ps27-{name}.{}", extension(name)));
     let bytes = std::fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
     let mut file = Walker(&bytes);
     file.take(26);
@@ -603,6 +608,44 @@ fn icc() -> Fixture {
         })],
     };
     let mut photoshop = ours.clone();
+    photoshop.resolution_dpi = Some(72.0);
+    photoshop.layers.insert(
+        0,
+        Node::Layer(Layer {
+            name: "Layer 1".into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            mask: None,
+            pixels: solid(rect(0, 0, 0, 0), [0, 0, 0, 0]),
+        }),
+    );
+    Fixture { ours, photoshop }
+}
+
+fn psb() -> Fixture {
+    let pixels = solid(rect(0, 0, 8, 30001), [255, 0, 0, 255]);
+    let ours = Document {
+        width: 30001,
+        height: 8,
+        channels: Channels::Rgba,
+        icc_profile: None,
+        resolution_dpi: None,
+        merged: pixels.clone(),
+        layers: vec![Node::Layer(Layer {
+            name: "Wide".into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels,
+            mask: None,
+        })],
+    };
+    let mut photoshop = ours.clone();
+    photoshop.channels = Channels::Rgb;
+    photoshop.icc_profile = Some(photoshop_profile("psb"));
     photoshop.resolution_dpi = Some(72.0);
     photoshop.layers.insert(
         0,
