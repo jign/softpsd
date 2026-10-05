@@ -7,12 +7,13 @@ pub struct Fixture {
 }
 
 pub fn names() -> &'static [&'static str] {
-    &["smoke", "alpha"]
+    &["smoke", "alpha", "hidden"]
 }
 
 pub fn fixture(name: &str) -> Fixture {
     match name {
         "smoke" => smoke(),
+        "hidden" => hidden(),
         "alpha" => alpha(),
         _ => panic!("unknown fixture: {name}"),
     }
@@ -214,6 +215,76 @@ fn alpha() -> Fixture {
         }),
     );
     photoshop.icc_profile = Some(photoshop_profile("alpha"));
+    photoshop.resolution_dpi = Some(72.0);
+    Fixture { ours, photoshop }
+}
+
+fn hidden() -> Fixture {
+    let mut merged = solid(rect(0, 0, 32, 32), [0, 0, 0, 0]);
+    fill(&mut merged, rect(0, 0, 16, 16), [255, 0, 0, 255]);
+    let ours = Document {
+        width: 32,
+        height: 32,
+        channels: Channels::Rgba,
+        icc_profile: None,
+        resolution_dpi: None,
+        layers: vec![
+            Node::Layer(Layer {
+                name: "Shown".into(),
+                visible: true,
+                opacity: 255,
+                blend: Blend::Normal,
+                clip_to_below: false,
+                pixels: solid(rect(0, 0, 16, 16), [255, 0, 0, 255]),
+                mask: None,
+            }),
+            Node::Layer(Layer {
+                name: "Hidden".into(),
+                visible: false,
+                opacity: 255,
+                blend: Blend::Normal,
+                clip_to_below: false,
+                pixels: solid(rect(16, 16, 32, 32), [0, 255, 0, 255]),
+                mask: None,
+            }),
+            Node::Group(Group {
+                name: "Hidden group".into(),
+                visible: false,
+                opacity: 255,
+                blend: Blend::Normal,
+                expanded: true,
+                mask: None,
+                children: vec![Node::Layer(Layer {
+                    name: "Inside".into(),
+                    visible: true,
+                    opacity: 255,
+                    blend: Blend::Normal,
+                    clip_to_below: false,
+                    pixels: solid(rect(0, 16, 16, 32), [0, 0, 255, 255]),
+                    mask: None,
+                })],
+            }),
+        ],
+        merged,
+    };
+    let mut photoshop = ours.clone();
+    let Node::Group(group) = &mut photoshop.layers[2] else {
+        unreachable!()
+    };
+    group.blend = Blend::PassThrough;
+    photoshop.layers.insert(
+        0,
+        Node::Layer(Layer {
+            name: "Layer 1".into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels: solid(rect(0, 0, 0, 0), [0, 0, 0, 0]),
+            mask: None,
+        }),
+    );
+    photoshop.icc_profile = Some(photoshop_profile("hidden"));
     photoshop.resolution_dpi = Some(72.0);
     Fixture { ours, photoshop }
 }
