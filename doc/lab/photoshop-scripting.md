@@ -17,6 +17,9 @@ Rules inside the script:
 - `app.displayDialogs = DialogModes.NO`.
 - Save with `doc.saveAs(file, opts, true, Extension.LOWERCASE)` (asCopy) and close with
   `SaveOptions.DONOTSAVECHANGES`. Never touch the user's open documents.
+- `layer.bounds` is the pixel rect cut by the layer mask, for Photoshop's own files too.
+  The stored rect is the `boundsNoMask` key of the layer descriptor from `executeActionGet`;
+  the DOM has no property for it.
 - A raster mask from the selection needs Action Manager:
   `Mk` with `Nw`=`Chnl`, `At`=mask channel, `Usng`=`UsrM`/`RvlS`. See `tools/photoshop/smoke.jsx`.
 

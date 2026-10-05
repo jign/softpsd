@@ -184,7 +184,10 @@ first as Photoshop lists it:
 <group|layer> '<name>' opacity=<0..255> blend=<BlendMode name> visible=<true|false> bounds=<l>,<t>,<r>,<b>[ mask=<l>,<t>,<r>,<b>]
 ```
 
-Opacity in Photoshop's scripting is 0..100 as a float; multiply by 2.55 and round. Mask
+Opacity in Photoshop's scripting is 0..100 as a float; multiply by 2.55 and round.
+`layer.bounds` is the pixel rect cut by the mask. Print the stored rect instead: Action
+Manager `executeActionGet` on the target layer, key `boundsNoMask`, as left, top, right,
+bottom. Mask
 bounds come from selecting the mask channel: `doc.activeLayer = layer`, then Action
 Manager `slct` on the mask channel and `doc.selection.bounds`, or report `mask=?` if the
 API cannot give it and say so in the handoff. PNG export: `doc.exportDocument(file,
