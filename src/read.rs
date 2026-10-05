@@ -108,7 +108,6 @@ pub fn read_header(input: &[u8]) -> Result<Header> {
     })
 }
 
-#[allow(dead_code)]
 struct Resources {
     icc_profile: Option<Vec<u8>>,
     resolution_dpi: Option<f32>,
@@ -418,7 +417,6 @@ struct DecodedLayer {
     pixels: Image,
 }
 
-#[allow(dead_code)]
 struct LayerData {
     channels: Channels,
     layers: Vec<DecodedLayer>,
@@ -452,20 +450,46 @@ fn decode_plane(mut data: Cursor<'_>, rect: Rect, format: Format) -> Result<Vec<
             Err(malformed())
         };
     }
+    let counts = if compression == 1 {
+        data.take(count_bytes(rect, format)? as u64)
+            .map_err(|_| malformed())?
+    } else {
+        &[]
+    };
+    let plane = decode_plane_data(&mut data, rect, format, compression, counts).map_err(
+        |error| match error {
+            Error::Malformed("truncated") => malformed(),
+            other => other,
+        },
+    )?;
+    if data.remaining() != 0 {
+        return Err(malformed());
+    }
+    Ok(plane)
+}
+
+fn count_bytes(rect: Rect, format: Format) -> Result<usize> {
+    let count_size = if format == Format::Psd { 2 } else { 4 };
+    rect.height()
+        .checked_mul(count_size)
+        .ok_or(Error::Malformed("channel data"))
+}
+
+fn decode_plane_data(
+    data: &mut Cursor<'_>,
+    rect: Rect,
+    format: Format,
+    compression: u16,
+    counts: &[u8],
+) -> Result<Vec<u8>> {
+    let area = rect_area(rect)?;
+    let malformed = || Error::Malformed("channel data");
     let mut plane = Vec::new();
     if compression == 0 {
-        if data.remaining() != area {
-            return Err(malformed());
-        }
+        let bytes = data.take(area as u64)?;
         plane.try_reserve_exact(area).map_err(|_| malformed())?;
-        plane.extend_from_slice(data.take(area as u64).map_err(|_| malformed())?);
+        plane.extend_from_slice(bytes);
     } else {
-        let count_size = if format == Format::Psd { 2 } else { 4 };
-        let count_bytes = rect
-            .height()
-            .checked_mul(count_size)
-            .ok_or_else(malformed)?;
-        let counts = data.take(count_bytes as u64).map_err(|_| malformed())?;
         let mut sizes = Cursor::new(counts);
         let mut total = 0u64;
         while sizes.remaining() != 0 {
@@ -473,14 +497,15 @@ fn decode_plane(mut data: Cursor<'_>, rect: Rect, format: Format) -> Result<Vec<
                 .checked_add(row_count(&mut sizes, format).map_err(|_| malformed())?)
                 .ok_or_else(malformed)?;
         }
-        if total != data.remaining() as u64 || area > data.remaining().saturating_mul(64) {
+        let mut rows = Cursor::new(data.take(total)?);
+        if area > rows.remaining().saturating_mul(64) {
             return Err(malformed());
         }
         plane.try_reserve_exact(area).map_err(|_| malformed())?;
         let mut sizes = Cursor::new(counts);
         for _ in 0..rect.height() {
             let count = row_count(&mut sizes, format).map_err(|_| malformed())?;
-            let row = data.take(count).map_err(|_| malformed())?;
+            let row = rows.take(count).map_err(|_| malformed())?;
             rle::decode_row(row, rect.width(), &mut plane).map_err(|_| malformed())?;
         }
     }
@@ -621,6 +646,57 @@ fn build_tree(layers: Vec<DecodedLayer>) -> Result<Vec<Node>> {
     Ok(root)
 }
 
+fn read_merged(cursor: &mut Cursor<'_>, header: Header, channels: Channels) -> Result<Image> {
+    let compression = cursor.u16()?;
+    if !matches!(compression, 0 | 1) {
+        return Err(Error::Unsupported("compression"));
+    }
+    let rect = Rect {
+        top: 0,
+        left: 0,
+        bottom: header.height as i32,
+        right: header.width as i32,
+    };
+    let plane_counts = if compression == 1 {
+        count_bytes(rect, header.format)?
+    } else {
+        0
+    };
+    let all_counts = plane_counts
+        .checked_mul(usize::from(header.channel_count))
+        .ok_or(Error::Malformed("channel data"))?;
+    let mut counts = Cursor::new(cursor.take(all_counts as u64)?);
+    let mut planes = [None, None, None, None];
+    for slot in planes.iter_mut().take(usize::from(header.channel_count)) {
+        let sizes = counts.take(plane_counts as u64)?;
+        *slot = Some(decode_plane_data(
+            cursor,
+            rect,
+            header.format,
+            compression,
+            sizes,
+        )?);
+    }
+    if channels == Channels::Rgb {
+        planes[3] = None;
+    }
+    let mut image = interleave(rect, planes)?;
+    if channels == Channels::Rgba {
+        for pixel in image.data.chunks_exact_mut(4) {
+            let alpha = i32::from(pixel[3]);
+            for colour in &mut pixel[..3] {
+                *colour = if alpha == 0 {
+                    0
+                } else {
+                    (((i32::from(*colour) - 255 + alpha) * 255 + alpha / 2) / alpha).clamp(0, 255)
+                        as u8
+                };
+            }
+        }
+    }
+    Ok(image)
+}
+
 pub fn read(input: &[u8]) -> Result<Document> {
     let header = read_header(input)?;
     if header.depth != 8 {
@@ -643,9 +719,18 @@ pub fn read(input: &[u8]) -> Result<Document> {
     cursor.skip(26)?;
     let colour_len = u64::from(cursor.u32()?);
     cursor.skip(colour_len)?;
-    let _resources = read_resources(&mut cursor)?;
+    let resources = read_resources(&mut cursor)?;
     let records = read_layer_records(&mut cursor, header)?;
     let layers = read_channel_data(records, header.format)?;
-    let _tree = build_tree(layers.layers)?;
-    Err(Error::Unsupported("not implemented"))
+    let tree = build_tree(layers.layers)?;
+    let merged = read_merged(&mut cursor, header, layers.channels)?;
+    Ok(Document {
+        width: header.width,
+        height: header.height,
+        channels: layers.channels,
+        icc_profile: resources.icc_profile,
+        resolution_dpi: resources.resolution_dpi,
+        layers: tree,
+        merged,
+    })
 }
