@@ -2,6 +2,79 @@
 
 use crate::{Document, Error, Format, Result};
 
+#[allow(dead_code)]
+struct Cursor<'a> {
+    data: &'a [u8],
+    pos: usize,
+}
+
+#[allow(dead_code)]
+impl<'a> Cursor<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data, pos: 0 }
+    }
+
+    fn take(&mut self, n: u64) -> Result<&'a [u8]> {
+        let n = usize::try_from(n).map_err(|_| Error::Malformed("truncated"))?;
+        let end = self
+            .pos
+            .checked_add(n)
+            .ok_or(Error::Malformed("truncated"))?;
+        let bytes = self
+            .data
+            .get(self.pos..end)
+            .ok_or(Error::Malformed("truncated"))?;
+        self.pos = end;
+        Ok(bytes)
+    }
+
+    fn skip(&mut self, n: u64) -> Result<()> {
+        self.take(n).map(|_| ())
+    }
+
+    fn remaining(&self) -> usize {
+        self.data.len() - self.pos
+    }
+
+    fn bytes<const N: usize>(&mut self) -> Result<[u8; N]> {
+        self.take(N as u64)?
+            .try_into()
+            .map_err(|_| Error::Malformed("truncated"))
+    }
+
+    fn u8(&mut self) -> Result<u8> {
+        let [value] = self.bytes()?;
+        Ok(value)
+    }
+
+    fn u16(&mut self) -> Result<u16> {
+        Ok(u16::from_be_bytes(self.bytes()?))
+    }
+
+    fn i16(&mut self) -> Result<i16> {
+        Ok(i16::from_be_bytes(self.bytes()?))
+    }
+
+    fn u32(&mut self) -> Result<u32> {
+        Ok(u32::from_be_bytes(self.bytes()?))
+    }
+
+    fn i32(&mut self) -> Result<i32> {
+        Ok(i32::from_be_bytes(self.bytes()?))
+    }
+
+    fn u64(&mut self) -> Result<u64> {
+        Ok(u64::from_be_bytes(self.bytes()?))
+    }
+
+    fn len(&mut self, format: Format) -> Result<u64> {
+        match format {
+            Format::Psd => self.u32().map(u64::from),
+            Format::Psb => self.u64(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header {
     pub format: Format,
