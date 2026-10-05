@@ -476,7 +476,7 @@ fn unicode_name() -> Fixture {
         icc_profile: None,
         resolution_dpi: None,
         layers: vec![Node::Layer(Layer {
-            name: layer_name.into(),
+            name: layer_name,
             visible: true,
             opacity: 255,
             blend: Blend::Normal,
