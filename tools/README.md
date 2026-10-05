@@ -7,5 +7,3 @@ per machine. Nothing external is committed.
 - `photoshop/smoke.jsx` builds the reference fixture and saves it to `OUT`.
 - `readers/psd-tools-dump.py <file>` and `readers/ag-psd-dump.js <file>` print a file's tree
   through each reader.
-- `timed.py <unit> <lane> -- <command>` runs a test command and appends its wall time to
-  `test-time.csv`. Every test run goes through it.

@@ -1,6 +1,5 @@
 target/
 Cargo.lock
-test-time.csv
 tools/.venv/
 tools/readers/node_modules/
 tools/readers/package-lock.json
