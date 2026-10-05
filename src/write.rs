@@ -56,9 +56,12 @@ fn record_channels(record: &Record<'_>) -> Result<Vec<Channel>> {
             }
         }
     }
-    if let Record::Layer(layer) = record
-        && let Some(mask) = &layer.mask
-    {
+    let mask = match record {
+        Record::Layer(layer) => layer.mask.as_ref(),
+        Record::GroupStart(group) => group.mask.as_ref(),
+        Record::GroupEnd => None,
+    };
+    if let Some(mask) = mask {
         channels.push(Channel {
             id: -2,
             data: encode_plane(&mask.data, mask.rect)?,
@@ -310,7 +313,15 @@ fn merged_channels(doc: &Document) -> Result<Vec<Vec<u8>>> {
                 .merged
                 .data
                 .chunks_exact(4)
-                .map(|pixel| pixel[offset])
+                .map(|pixel| {
+                    if offset == 3 {
+                        pixel[3]
+                    } else {
+                        let c = u32::from(pixel[offset]);
+                        let a = u32::from(pixel[3]);
+                        ((c * a + 255 * (255 - a) + 127) / 255) as u8
+                    }
+                })
                 .collect();
             encode_plane(&plane, doc.merged.rect)
         })
