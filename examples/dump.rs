@@ -1,4 +1,4 @@
-use softpsd::{Document, Mask, Node, Rect};
+use softpsd::{Blend, Document, Mask, Node, Rect};
 use std::path::Path;
 
 fn bounds(rect: Rect) -> String {
@@ -16,6 +16,14 @@ fn mask_bounds(mask: Option<&Mask>) -> String {
     mask.map_or_else(String::new, |mask| format!(" mask={}", bounds(mask.rect)))
 }
 
+fn blend_name(blend: Blend) -> String {
+    if blend == Blend::Color {
+        String::from("COLORBLEND")
+    } else {
+        format!("{blend:?}").to_uppercase()
+    }
+}
+
 fn print_tree(nodes: &[Node], depth: usize) {
     let indent = "  ".repeat(depth);
     for node in nodes.iter().rev() {
@@ -25,7 +33,7 @@ fn print_tree(nodes: &[Node], depth: usize) {
                     "{indent}group '{}' opacity={} blend={} visible={}{}",
                     name(&group.name),
                     group.opacity,
-                    format!("{:?}", group.blend).to_uppercase(),
+                    blend_name(group.blend),
                     group.visible,
                     mask_bounds(group.mask.as_ref()),
                 );
@@ -35,7 +43,7 @@ fn print_tree(nodes: &[Node], depth: usize) {
                 "{indent}layer '{}' opacity={} blend={} visible={} bounds={}{}",
                 name(&layer.name),
                 layer.opacity,
-                format!("{:?}", layer.blend).to_uppercase(),
+                blend_name(layer.blend),
                 layer.visible,
                 bounds(layer.pixels.rect),
                 mask_bounds(layer.mask.as_ref()),
