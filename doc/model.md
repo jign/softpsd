@@ -179,8 +179,19 @@ A group is two records: the end marker (kind 3, name `</Layer group>`) comes fir
 order, then the children, then the group itself (kind 1 or 2). That is because the file lists
 layers bottom to top. Both records carry four empty channels (length 2 each).
 
-Blocks Photoshop writes that we do not: `lnsr`, `clbl`, `infx`, `knko`, `lspf`, `lclr`,
-`shmd`, `fxrp`. The reader keeps them as opaque bytes and drops them.
+Blocks Photoshop writes that we do not, and why:
+
+| Key | Holds | Why not |
+| --- | --- | --- |
+| `lnsr` | whether the name was typed or generated | nothing reads it |
+| `clbl` `infx` `knko` | Advanced Blending checkboxes | defaults match ours; no effects to blend |
+| `shmd` | layer metadata, layer-comps flag | no layer comps |
+| `fxrp` | Free Transform reference point | Photoshop resets it |
+| `lclr` | the colour label on the layer row | wanted: add with a `label` field when a caller has one |
+| `lspf` | locks: transparency, pixels, position | wanted: add with a `locks` field when a caller has one |
+
+A reader that does not find these uses the defaults. The reader keeps all of them as opaque
+bytes and drops them.
 
 ### Image data
 
