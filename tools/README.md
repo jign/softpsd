@@ -1,5 +1,7 @@
 # Tools
 
+Run every release check with `tools\gate-all.ps1` (Photoshop must be open).
+
 `setup.ps1` installs every external reader into gitignored folders under `tools/`. Run it once
 per machine. Nothing external is committed.
 
@@ -57,3 +59,21 @@ compares each file with psd-tools and writes `target/corpus-check.txt`. Its clas
 counts are informational. The Photoshop triage tool opens each malformed file, counts
 root layers, closes without saving and writes `target/corpus-triage.txt`; it skips files
 already open in Photoshop.
+
+Composite checks:
+
+```powershell
+tools\composite-gate.ps1 tests\fixtures\softpsd-smoke.psd
+```
+
+The gate finds Krita and GIMP 3 in PATH or Program Files on local fixed drives; optional
+`-Krita` and `-Gimp` executable paths override discovery. Krita uses its batch exporter;
+GIMP uses a fresh console process and Script-Fu to load, flatten over white, and export PNG.
+PNG files and GIMP logs go under `target/composites/`. Pixel differences report count,
+first coordinate and largest channel difference and are informational. Export failures,
+missing PNGs and comparison errors fail the gate. Missing engines are explicitly skipped.
+
+`gate-all.ps1` checks the installed reader directories, then runs formatting, Clippy,
+tests, all fixture gates, the corpus panic test when fetched, and composites on every
+saved writer fixture. It stops at the first failure and names the step. Run
+`tools\setup.ps1` if the external reader directories are missing.
