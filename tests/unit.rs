@@ -5,10 +5,11 @@ use std::collections::HashSet;
 
 #[test]
 fn rle_round_trip() {
-    let mut row = vec![42; 100];
-    row.extend((0..=255).cycle().take(300));
-    row.extend([17; 300]);
-    for row in [row, Vec::new()] {
+    let literals: Vec<u8> = (0..=255).cycle().take(300).collect();
+    let mut mixed = vec![42; 100];
+    mixed.extend_from_slice(&literals);
+    mixed.extend([17; 300]);
+    for row in [vec![42; 100], literals, vec![17; 300], mixed, Vec::new()] {
         let mut encoded = Vec::new();
         rle::encode_row(&row, &mut encoded);
         let mut decoded = Vec::new();
