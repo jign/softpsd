@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from types import SimpleNamespace
 
 from psd_tools import PSDImage
 from psd_limits import pixel_limits
@@ -60,6 +61,14 @@ def compare_pixels(name, width, height, path, layer):
 
 
 def compare_layers(exports, psd):
+    if len(psd) == 0:
+        background = SimpleNamespace(
+            width=psd.width, height=psd.height, left=0, top=0,
+            topil=lambda **kwargs: psd.topil(**kwargs).convert("RGB"),
+        )
+        if len(exports) != 1 or exports[0][0] != "Background":
+            raise ValueError("flattened file must export one Background layer")
+        return compare_pixels(*exports[0], background)
     layers = defaultdict(deque)
     for layer in psd.descendants():
         if layer.is_group():
