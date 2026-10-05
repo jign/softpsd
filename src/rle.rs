@@ -57,7 +57,7 @@ pub fn decode_row(src: &[u8], width: usize, out: &mut Vec<u8>) -> Result<()> {
             -128 => {}
         }
     }
-    if pos != src.len() {
+    if src[pos..].iter().any(|&byte| byte != 0x80) {
         return Err(Error::Malformed("RLE row"));
     }
     Ok(())

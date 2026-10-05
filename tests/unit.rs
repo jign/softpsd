@@ -17,6 +17,10 @@ fn rle_round_trip() {
         let mut decoded = Vec::new();
         rle::decode_row(&encoded, row.len(), &mut decoded).unwrap();
         assert_eq!(decoded, row);
+        encoded.extend([0x80, 0x80]);
+        decoded.clear();
+        rle::decode_row(&encoded, row.len(), &mut decoded).unwrap();
+        assert_eq!(decoded, row);
     }
 }
 
