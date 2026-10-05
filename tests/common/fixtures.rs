@@ -7,12 +7,15 @@ pub struct Fixture {
 }
 
 pub fn names() -> &'static [&'static str] {
-    &["smoke", "alpha", "hidden", "clip", "nested", "empty"]
+    &[
+        "smoke", "alpha", "hidden", "clip", "nested", "empty", "name",
+    ]
 }
 
 pub fn fixture(name: &str) -> Fixture {
     match name {
         "smoke" => smoke(),
+        "name" => unicode_name(),
         "empty" => empty(),
         "nested" => nested(),
         "clip" => clip(),
@@ -458,6 +461,46 @@ fn empty() -> Fixture {
         }),
     );
     photoshop.icc_profile = Some(photoshop_profile("empty"));
+    photoshop.resolution_dpi = Some(72.0);
+    Fixture { ours, photoshop }
+}
+
+fn unicode_name() -> Fixture {
+    let layer_name = "日本語Привет😀".repeat(20);
+    let mut merged = solid(rect(0, 0, 32, 32), [0, 0, 0, 0]);
+    fill(&mut merged, rect(4, 4, 12, 12), [255, 0, 0, 255]);
+    let ours = Document {
+        width: 32,
+        height: 32,
+        channels: Channels::Rgba,
+        icc_profile: None,
+        resolution_dpi: None,
+        layers: vec![Node::Layer(Layer {
+            name: layer_name.into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels: solid(rect(4, 4, 12, 12), [255, 0, 0, 255]),
+            mask: None,
+        })],
+        merged,
+    };
+    let mut photoshop = ours.clone();
+
+    photoshop.layers.insert(
+        0,
+        Node::Layer(Layer {
+            name: "Layer 1".into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels: solid(rect(0, 0, 0, 0), [0, 0, 0, 0]),
+            mask: None,
+        }),
+    );
+    photoshop.icc_profile = Some(photoshop_profile("name"));
     photoshop.resolution_dpi = Some(72.0);
     Fixture { ours, photoshop }
 }
