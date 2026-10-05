@@ -162,7 +162,8 @@ Four tests, no more:
 - `blend_keys_round_trip`: every `Blend` goes to a key and back to itself; all 28 keys are
   distinct.
 - `validate_refuses`: a layer with PassThrough, a mask with a wrong data length and a
-  31_000-wide Psd each return `Err`. One test, three asserts.
+  31_000-wide Psd each return `Err`, and the same document with Normal and no mask returns
+  `Ok`. One test, four asserts.
 - `write_smoke_parses`: run the smoke writer into a `Vec<u8>`, then check the file
   through a tiny private walker: signature, version 1, the layer count is -3, three
   records, and the names in the order `</Layer group>`, `Painted`, `Group A`. This walker
