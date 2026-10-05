@@ -85,7 +85,8 @@ per cm and is multiplied by 2.54; anything else is skipped. Skip every other id 
 ### 4. Layer records
 
 Layer and mask section: length by format, child cursor. Inside: layer info length by
-format, child cursor. Then i16 layer count; `Channels::Rgba` when negative, `Rgb` when
+format, child cursor. Either length being 0 means no layers, `Channels::Rgb`, and the
+merged image follows. Then i16 layer count; `Channels::Rgba` when negative, `Rgb` when
 positive, zero means no layers. An Rgba count with a header channel count under 4 is
 `Malformed("layer count")`.
 
@@ -113,8 +114,11 @@ u32 extra length, child cursor for the extra data:
   `Malformed("tagged block")`, 4-byte key, length (u64 only for the PSB keys listed in
   model.md under `8B64`, u32 otherwise), data by length. Handle `luni` (u32 char count,
   UTF-16BE, overrides the Pascal name), `lsct` (u32 kind; 0..=3, else
-  `Unsupported("section kind")`; the blend key inside is ignored, the record's key is the
-  truth). Every other key is skipped by length, except the refusal list below.
+  `Unsupported("section kind")`; for kind 1 or 2 the data continues with `8BIM` and a
+  blend key, and that key is the group's blend: Photoshop leaves `norm` in the record.
+  Keep it in `RawLayer` as `section_blend: Option<Blend>`, unknown is
+  `Unsupported("blend mode")`; Photoshop's block is 16 bytes, ours 12, read by length).
+  Every other key is skipped by length, except the refusal list below.
 
 Refused by name with `Error::UnsupportedLayer`, reason in brackets, when the record
 carries any of these keys:
@@ -159,8 +163,8 @@ Walk the `RawLayer`s in file order, bottom to top, with a stack of open groups:
 
 - Kind 3 (`</Layer group>`): push a new frame. The record's own fields are discarded.
 - Kind 1 or 2: pop a frame, else `Malformed("group nesting")`. Build a `Group` from this
-  record: name, visible, opacity, blend (the record's key, PassThrough allowed), expanded is
-  kind 1, mask, children are the frame's nodes. Push it into the parent frame, or the root.
+  record: name, visible, opacity, blend (`section_blend`, or the record's key when the
+  block has none), expanded is kind 1, mask, children are the frame's nodes. Push it into the parent frame, or the root.
 - Otherwise a `Layer`: name, visible, opacity, blend (PassThrough here is
   `Malformed("pass through on a layer")`), clip_to_below, pixels, mask. Push it into the
   current frame or the root.
@@ -192,8 +196,8 @@ exact format of `tools/photoshop/dump.jsx`, top of the stack first:
 <group|layer> '<name>' opacity=<0..255> blend=<NAME> visible=<true|false> bounds=<l>,<t>,<r>,<b>[ mask=<l>,<t>,<r>,<b>]
 ```
 
-Blend names as Photoshop prints them: the `Blend` variant in upper snake case, so
-`PASS_THROUGH`, `COLOR_BURN`, `MULTIPLY`. Groups print no `bounds=` because the file has
+Blend names as Photoshop prints them: the `Blend` variant in upper case with no
+separator, so `PASSTHROUGH`, `COLORBURN`, `MULTIPLY`. Groups print no `bounds=` because the file has
 none for them. It also writes every pixel layer's RGBA bytes to `<psd>.<n>.rgba`, `n`
 counting from 1 in file order over pixel layers only, and prints after the tree one line
 per file: `<n> <name> <w>x<h> <path>`. On a read error it prints the error and exits 1.
