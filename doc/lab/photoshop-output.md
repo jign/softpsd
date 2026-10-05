@@ -11,8 +11,9 @@ stored as `222, 120, 120, 153`. psd-tools `topil()` undoes it; a writer that sto
 RGB gets `163, 0, 0` back from it.
 
 A transparent-background document gets an empty `Layer 1` at bounds 0,0,0,0, below the
-group at the root. A new group is PassThrough and open (`lsct` kind 1); its record's blend
-key is `pass` too. Resolution resource 1005 is 72 ppi. The mask block is 20 bytes, flags 0.
+group at the root. A new group is PassThrough and open (`lsct` kind 1). Its record's blend
+key is `norm`; the `pass` is only inside `lsct` (`00 00 00 01 8BIM pass`). A group's blend
+lives in `lsct`, not in the record. Resolution resource 1005 is 72 ppi. The mask block is 20 bytes, flags 0.
 
 Channel ids: -1 alpha, 0 1 2 RGB, -2 user mask. Every layer, including groups and the closing
 `</Layer group>` record, carries all four colour channels (2 bytes each when empty).
