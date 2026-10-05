@@ -7,12 +7,13 @@ pub struct Fixture {
 }
 
 pub fn names() -> &'static [&'static str] {
-    &["smoke", "alpha", "hidden", "clip"]
+    &["smoke", "alpha", "hidden", "clip", "nested"]
 }
 
 pub fn fixture(name: &str) -> Fixture {
     match name {
         "smoke" => smoke(),
+        "nested" => nested(),
         "clip" => clip(),
         "hidden" => hidden(),
         "alpha" => alpha(),
@@ -336,6 +337,76 @@ fn clip() -> Fixture {
         }),
     );
     photoshop.icc_profile = Some(photoshop_profile("clip"));
+    photoshop.resolution_dpi = Some(72.0);
+    Fixture { ours, photoshop }
+}
+
+fn nested() -> Fixture {
+    let mut merged = solid(rect(0, 0, 32, 32), [0, 0, 0, 0]);
+    fill(&mut merged, rect(4, 4, 12, 12), [255, 0, 0, 255]);
+    let ours = Document {
+        width: 32,
+        height: 32,
+        channels: Channels::Rgba,
+        icc_profile: None,
+        resolution_dpi: None,
+        layers: vec![Node::Group(Group {
+            name: "Outer".into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::PassThrough,
+            expanded: true,
+            mask: None,
+            children: vec![Node::Group(Group {
+                name: "Middle".into(),
+                visible: true,
+                opacity: 255,
+                blend: Blend::PassThrough,
+                expanded: false,
+                mask: None,
+                children: vec![Node::Group(Group {
+                    name: "Inner".into(),
+                    visible: true,
+                    opacity: 255,
+                    blend: Blend::PassThrough,
+                    expanded: true,
+                    mask: None,
+                    children: vec![Node::Layer(Layer {
+                        name: "Deep".into(),
+                        visible: true,
+                        opacity: 255,
+                        blend: Blend::Normal,
+                        clip_to_below: false,
+                        pixels: solid(rect(4, 4, 12, 12), [255, 0, 0, 255]),
+                        mask: None,
+                    })],
+                })],
+            })],
+        })],
+        merged,
+    };
+    let mut photoshop = ours.clone();
+    let Node::Group(outer) = &mut photoshop.layers[0] else {
+        unreachable!();
+    };
+    let Node::Group(middle) = &mut outer.children[0] else {
+        unreachable!();
+    };
+    middle.expanded = true;
+
+    photoshop.layers.insert(
+        0,
+        Node::Layer(Layer {
+            name: "Layer 1".into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels: solid(rect(0, 0, 0, 0), [0, 0, 0, 0]),
+            mask: None,
+        }),
+    );
+    photoshop.icc_profile = Some(photoshop_profile("nested"));
     photoshop.resolution_dpi = Some(72.0);
     Fixture { ours, photoshop }
 }
