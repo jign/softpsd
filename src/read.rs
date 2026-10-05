@@ -581,7 +581,9 @@ fn read_channel_data(mut records: LayerRecords<'_>, format: Format) -> Result<La
         layers.push(DecodedLayer { record, pixels });
     }
     records.info.skip(records.info.remaining() as u64)?;
-    if let Some(ref mut section) = records.section {
+    if let Some(ref mut section) = records.section
+        && section.remaining() != 0
+    {
         let global_mask_len = u64::from(section.u32()?);
         section.skip(global_mask_len)?;
         section.skip(section.remaining() as u64)?;
