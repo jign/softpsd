@@ -73,10 +73,9 @@ impl Rect {
         (i64::from(self.bottom) - i64::from(self.top)).max(0) as usize
     }
 
-    pub fn area(&self) -> usize {
-        self.width()
-            .checked_mul(self.height())
-            .expect("rect area exceeds usize")
+    /// Returns None if the pixel count exceeds usize.
+    pub fn area(&self) -> Option<usize> {
+        self.width().checked_mul(self.height())
     }
 
     pub fn is_empty(&self) -> bool {

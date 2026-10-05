@@ -14,7 +14,7 @@ pub mod write;
 pub use model::{Blend, Channels, Document, Group, Image, Layer, Mask, Node, Rect};
 pub use write::{format_for, write};
 
-/// 8-bit RGB or RGBA layer data. Other depths and modes are refused.
+/// File format: PSD, or PSB above 30,000 px on either side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     /// Up to 30,000 px per side.
