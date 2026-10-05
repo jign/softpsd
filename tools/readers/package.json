@@ -1,0 +1,7 @@
+{
+  "name": "softpsd-readers",
+  "private": true,
+  "dependencies": {
+    "ag-psd": "31.0.2"
+  }
+}
