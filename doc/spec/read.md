@@ -25,6 +25,10 @@ pub fn read_header(input: &[u8]) -> Result<Header>;   // cheap: format, size, de
   -1 channel gets alpha 255. Rgb documents give alpha 255 in the merged image.
 - The merged RGB of an Rgba document is stored over white; the reader undoes it:
   `c = (stored - 255 + a) * 255 / a` for `a > 0`, rounded, and 0 for `a == 0`.
+- `lsdk` (nested section divider, written by some tools) is read exactly like `lsct`.
+- The global layer mask info may be absent: a layer and mask section that ends after the
+  layer info is complete. A PackBits row may carry trailing `80` no-op bytes inside its
+  stored count.
 - Group nesting is rebuilt from `lsct` kinds; an unbalanced file is `Error::Malformed`. A
   group's blend is the key inside `lsct`; the record's key is used only for layers.
 - A layer and mask section, or a layer info, of length 0 is a flattened file: Photoshop

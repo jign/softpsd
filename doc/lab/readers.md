@@ -29,3 +29,9 @@ Krita 5.3.4 batch PNG exports disagree with Photoshop on two writer fixtures:
 mask on the covering layer. Photoshop renders both as the stored merged image.
 Other Krita fixture differences are RGB values at alpha zero, with visible pixels matching.
 The composite gate records these differences without failing.
+
+Corpus refusal kept on purpose: `psd-tools/tests/psd_files/blend-modes/group-divider-blend-mode.psd`
+declares a raw 100 × 100 × 4 composite and holds 1,606 bytes of it. Photoshop opens it because it
+recomposites from the layers and never reads the merged image; psd-tools refuses the image data
+too. We refuse as `Malformed("truncated")`: the merged image is part of the model and we do not
+composite.
