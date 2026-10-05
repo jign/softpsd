@@ -1,7 +1,7 @@
-use softpsd::{Blend, rle};
+use softpsd::{Blend, Channels, Document, Format, Image, Layer, Mask, Node, Rect, rle, validate};
 use std::collections::HashSet;
 
-// TODO: validate_refuses, write_smoke_parses.
+// TODO: write_smoke_parses.
 
 #[test]
 fn rle_round_trip() {
@@ -55,4 +55,54 @@ fn blend_keys_round_trip() {
         assert_eq!(Blend::from_key(&key), Some(blend));
         assert!(keys.insert(key));
     }
+}
+
+#[test]
+fn validate_refuses() {
+    let rect = Rect {
+        top: 0,
+        left: 0,
+        bottom: 1,
+        right: 1,
+    };
+    let image = Image {
+        rect,
+        data: vec![0, 0, 0, 0],
+    };
+    let mut layer = Layer {
+        name: String::from("Painted"),
+        visible: true,
+        opacity: 255,
+        blend: Blend::PassThrough,
+        clip_to_below: false,
+        pixels: image.clone(),
+        mask: None,
+    };
+    let mut doc = Document {
+        width: 1,
+        height: 1,
+        channels: Channels::Rgba,
+        icc_profile: None,
+        resolution_dpi: None,
+        layers: vec![Node::Layer(layer.clone())],
+        merged: image,
+    };
+    assert!(validate::validate(&doc, Format::Psd).is_err());
+
+    layer.blend = Blend::Normal;
+    layer.mask = Some(Mask {
+        rect,
+        data: Vec::new(),
+        default: 0,
+        disabled: false,
+        inverted: false,
+    });
+    doc.layers = vec![Node::Layer(layer)];
+    assert!(validate::validate(&doc, Format::Psd).is_err());
+
+    doc.layers.clear();
+    doc.width = 31_000;
+    doc.merged.rect.right = 31_000;
+    doc.merged.data.resize(31_000 * 4, 0);
+    assert!(validate::validate(&doc, Format::Psd).is_err());
 }
