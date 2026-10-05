@@ -249,7 +249,6 @@ fn read_mask(cursor: &mut Cursor<'_>) -> Result<Option<Mask>> {
         data: Vec::new(),
         default,
         disabled: flags & 0x02 != 0,
-        inverted: flags & 0x04 != 0,
     }))
 }
 

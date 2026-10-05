@@ -51,7 +51,6 @@ pub struct Mask {
     pub data: Vec<u8>, // One byte per pixel, 255 = shown.
     pub default: u8,   // Value outside the rect, 0 or 255.
     pub disabled: bool,
-    pub inverted: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

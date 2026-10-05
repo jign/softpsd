@@ -311,7 +311,7 @@ fn encode_record(
         extra.extend_from_slice(&20u32.to_be_bytes());
         rect_bytes(mask.rect, &mut extra);
         extra.push(mask.default);
-        extra.push((u8::from(mask.disabled) * 0x02) | (u8::from(mask.inverted) * 0x04));
+        extra.push(u8::from(mask.disabled) * 0x02);
         extra.extend_from_slice(&[0, 0]);
     } else {
         extra.extend_from_slice(&0u32.to_be_bytes());

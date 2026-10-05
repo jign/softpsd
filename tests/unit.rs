@@ -102,7 +102,6 @@ fn validate_refuses() {
         data: Vec::new(),
         default: 0,
         disabled: false,
-        inverted: false,
     });
     doc.layers = vec![Node::Layer(layer)];
     assert!(validate::validate(&doc, Format::Psd).is_err());

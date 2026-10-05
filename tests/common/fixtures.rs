@@ -56,7 +56,6 @@ fn smoke() -> Fixture {
             data: vec![255; 32 * 32],
             default: 0,
             disabled: false,
-            inverted: false,
         }),
     };
     let mut merged = vec![0; 64 * 64 * 4];
