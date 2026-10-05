@@ -12,6 +12,6 @@ A finding that changes a spec corrects the spec in the same commit.
 | 5 Soft Edge export | in the Soft Edge repo: path dependency, tree to model mapping, Automasks setting, PSB switch, one-way notice; measure gamma blending against Photoshop | an 8K export opens in Photoshop and matches |
 | 6 Publish | benches, README, notice down, `publish = true`, 0.1.0 | on crates.io |
 
-Phases 1 to 3 are green. Phase 4 is next.
+Phases 1 to 4 are green. Phase 5 is next, in the Soft Edge repo.
 
 Phase 5 is where the API gets its real review. Nothing is published before it.
