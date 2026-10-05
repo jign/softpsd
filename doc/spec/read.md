@@ -32,4 +32,4 @@ pub fn read_header(input: &[u8]) -> Result<Header>;   // cheap: format, size, de
 ## Growth
 
 The reader grows from issues with the file attached. A new file kind is added only with its
-fixture under `tests/fixtures/` and a row in `gates.md`. 16-bit is the likely first.
+fixture under `tests/fixtures/` and a row in `gates.md` in this folder. 16-bit is the likely first.

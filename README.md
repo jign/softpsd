@@ -17,9 +17,10 @@ Not in v1: 16 and 32-bit, CMYK, duotone, vector masks, layer effects, smart obje
 
 ## Docs
 
-- `doc/model.md`: the data model and the byte layout it maps to.
-- `doc/write.md`, `doc/read.md`: what each direction does and refuses.
-- `doc/gates.md`: fixtures, the Photoshop oracle, third-party cross-checks. `doc/plan.md`: phases.
+- `doc/spec/model.md`: the data model and the byte layout it maps to.
+- `doc/spec/write.md`, `doc/spec/read.md`: what each direction does and refuses.
+- `doc/spec/gates.md`: fixtures, the Photoshop oracle, third-party cross-checks.
+- `doc/work/`: the plan and one folder per phase.
 - `doc/lab/`: findings. `doc/ref/`: external specs and reference clones.
 
 ## Contributing

@@ -1,7 +1,7 @@
 # Model
 
 The data the crate exposes, and the bytes it maps to. Adobe spec sections are named in
-brackets. Where Photoshop's output differs from the spec, `lab/photoshop-output.md` wins.
+brackets. Where Photoshop's output differs from the spec, `doc/lab/photoshop-output.md` wins.
 
 All integers are big-endian. PSD (version 1) and PSB (version 2) differ only where noted:
 PSB widens some lengths to 8 bytes and RLE row counts to 4.

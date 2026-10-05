@@ -5,7 +5,7 @@ reference repositories into `doc/ref/local/`, which is gitignored. Run it once p
 rerun to update. adobe.com times out from some networks, so the spec comes from the Wayback
 Machine.
 
-What we rely on is written into `doc/model.md` in our own words, with the Adobe section named.
+What we rely on is written into `doc/spec/model.md` in our own words, with the Adobe section named.
 `doc/lab/photoshop-output.md` records what Photoshop actually writes. When the spec and that
 file disagree, the lab file is right.
 
