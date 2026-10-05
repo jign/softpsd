@@ -22,6 +22,8 @@ pub fn read_header(input: &[u8]) -> Result<Header>;   // cheap: format, size, de
   which layer stopped the import.
 - Layer pixels are interleaved to RGBA straight alpha at the layer's rect. A layer with no
   -1 channel gets alpha 255. Rgb documents give alpha 255 in the merged image.
+- The merged RGB of an Rgba document is stored over white; the reader undoes it:
+  `c = (stored - 255 + a) * 255 / a` for `a > 0`, rounded, and 0 for `a == 0`.
 - Group nesting is rebuilt from `lsct` kinds; an unbalanced file is `Error::Malformed`.
 - Bounded. Every length is checked against the remaining input before it is used; the
   decoder allocates from the header's dimensions, never from a length field alone. RLE

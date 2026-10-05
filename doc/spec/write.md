@@ -11,7 +11,9 @@ pub fn format_for(width: u32, height: u32) -> Format;   // Psb above 30,000 on e
   for the format, image data length equals rect area × 4, mask data length equals mask rect
   area, PassThrough only on groups, rects inside i32. Any failure is `Error::Unsupported` or
   `Error::Malformed` and nothing is written.
-- The merged image is always written. The caller supplies it; the crate never composites.
+- The merged image is always written. The caller supplies straight RGBA; the crate never
+  composites layers. For Rgba documents the writer blends the merged RGB over white before
+  writing, `(c * a + 255 * (255 - a) + 127) / 255` per channel, as Photoshop does.
 - Every layer gets `luni`, `lyid`, and for groups `lsct`. Nothing else. `lyid` counts up from
   1 in file order.
 - Channel data is RLE. A row that would grow under PackBits is still written as RLE; a whole

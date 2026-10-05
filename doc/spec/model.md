@@ -199,6 +199,11 @@ u16 compression, then every channel's data in id order (R, G, B, then A for Rgba
 all rows' counts for all channels come first, then all rows' data. The merged image is always
 written; files without it do not open in most third-party readers.
 
+When the first alpha channel is transparency, Photoshop stores the merged RGB blended over
+white: `stored = (c * a + 255 * (255 - a) + 127) / 255`, alpha unchanged. Measured on
+`tests/fixtures/ps27-smoke.psd`: `200, 30, 30, 153` is stored as `222, 120, 120, 153`.
+Readers undo it (psd-tools `topil()` does). Colour under alpha 0 is lost.
+
 ## PSB
 
 | Where | PSD | PSB |

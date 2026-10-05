@@ -6,7 +6,9 @@ Multiply with a raster mask. Fixture: `tests/fixtures/ps27-smoke.psd`, made by
 
 Header: `8BPS`, version 1, 4 channels, 8-bit, RGB. Merged image RLE. Layer count negative: the
 merged image's first alpha channel is transparency. ICC profile (sRGB, 3144 bytes) in image
-resource 1039.
+resource 1039. Merged RGB is blended over white: the layer's `200, 30, 30` at alpha 153 is
+stored as `222, 120, 120, 153`. psd-tools `topil()` undoes it; a writer that stores straight
+RGB gets `163, 0, 0` back from it.
 
 A transparent-background document gets an empty `Layer 1` at bounds 0,0,0,0.
 

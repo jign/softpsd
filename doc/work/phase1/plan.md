@@ -96,8 +96,8 @@ because each layer record stores its channels' byte lengths ahead of the data.
 For a `Layer` with a non-empty rect: four channels in order `-1, 0, 1, 2` (alpha first,
 as Photoshop writes). Deinterleave `pixels.data` into four planes, encode each row, and
 build the channel's bytes as: all row counts (u16 each), then all encoded rows, prefixed
-with `00 01` (compression 1). If a mask is present, a fifth channel `-2` from `mask.data`
-at the mask's own rect, same encoding.
+with `00 01` (compression 1). If a `Layer` or `GroupStart` has a mask, a channel `-2` from
+`mask.data` at the mask's own rect, same encoding, after the four pixel channels.
 
 For an empty-rect layer, and for `GroupEnd` and `GroupStart`: four channels `-1, 0, 1, 2`,
 each exactly `00 00` (compression 0, no data).
@@ -118,7 +118,8 @@ Call `validate` first. Then emit in order, every integer big-endian:
    per flattened entry; the channel bytes per record in the same order; pad the layer info
    to 4; u32 0 for global layer mask info. No document-level tagged blocks.
 5. Image data: `00 01`, then all row counts of all four merged planes R, G, B, A (u16
-   each, plane by plane), then all rows' encoded data, plane by plane.
+   each, plane by plane), then all rows' encoded data, plane by plane. The R, G, B planes
+   are blended over white first, write.md has the formula; A is written as is.
 
 Layer record, per model.md. Fill in: rect from `pixels.rect` (zero rect for groups and
 group ends); channel count and the `(i16 id, u32 length)` pairs where length is the
@@ -151,7 +152,8 @@ pixel `0, 0, 0, 0` except rows 16..40 and columns 16..40, which are `200, 30, 30
 
 That merged image is the correct composite: the layer is alone over transparency, so
 Multiply has nothing beneath it and the result is the source colour at the layer's opacity,
-cut by the mask.
+cut by the mask. The file stores its RGB over white, `222, 120, 120, 153`; psd-tools and
+Photoshop undo that, so the PNG export and `compare-merged.py` see `200, 30, 30, 153`.
 
 ### 9. Tests, tests/unit.rs
 
