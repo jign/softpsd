@@ -13,6 +13,13 @@ Built for [Soft Edge](https://soft-edge-roadmap.pages.dev). Write path first.
 
 Not planned: 16 and 32-bit, CMYK, duotone, vector masks, smart objects, text layers.
 
+## Docs
+
+- `doc/model.md`: the data model and the byte layout it maps to.
+- `doc/write.md`, `doc/read.md`: what each direction does and refuses.
+- `doc/gates.md`: fixtures, the Photoshop oracle, third-party cross-checks.
+- `doc/lab/`: findings. `doc/ref/`: external specs and reference clones.
+
 ## Contributing
 
 A PR that changes the writer comes with a fixture a real Photoshop opened.
