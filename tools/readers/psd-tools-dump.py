@@ -2,6 +2,9 @@
 import sys
 from psd_tools import PSDImage
 
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+
 p = PSDImage.open(sys.argv[1])
 print(f"psd-tools {p.width}x{p.height} mode={p.color_mode.name} depth={p.depth} channels={p.channels}")
 icc = p.image_resources.get_data(1039)
