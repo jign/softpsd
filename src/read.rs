@@ -420,6 +420,7 @@ struct DecodedLayer {
 struct LayerData {
     channels: Channels,
     layers: Vec<DecodedLayer>,
+    flattened: bool,
 }
 
 fn rect_area(rect: Rect) -> Result<usize> {
@@ -581,7 +582,7 @@ fn read_channel_data(mut records: LayerRecords<'_>, format: Format) -> Result<La
         layers.push(DecodedLayer { record, pixels });
     }
     records.info.skip(records.info.remaining() as u64)?;
-    if let Some(mut section) = records.section {
+    if let Some(ref mut section) = records.section {
         let global_mask_len = u64::from(section.u32()?);
         section.skip(global_mask_len)?;
         section.skip(section.remaining() as u64)?;
@@ -589,6 +590,7 @@ fn read_channel_data(mut records: LayerRecords<'_>, format: Format) -> Result<La
     Ok(LayerData {
         channels: records.channels,
         layers,
+        flattened: records.section.is_none(),
     })
 }
 
@@ -722,8 +724,28 @@ pub fn read(input: &[u8]) -> Result<Document> {
     let resources = read_resources(&mut cursor)?;
     let records = read_layer_records(&mut cursor, header)?;
     let layers = read_channel_data(records, header.format)?;
-    let tree = build_tree(layers.layers)?;
+    let mut tree = build_tree(layers.layers)?;
     let merged = read_merged(&mut cursor, header, layers.channels)?;
+    if layers.flattened {
+        let mut data = Vec::new();
+        data.try_reserve_exact(merged.data.len())
+            .map_err(|_| Error::Malformed("allocation"))?;
+        data.extend_from_slice(&merged.data);
+        tree.try_reserve(1)
+            .map_err(|_| Error::Malformed("allocation"))?;
+        tree.push(Node::Layer(Layer {
+            name: String::from("Background"),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels: Image {
+                rect: merged.rect,
+                data,
+            },
+            mask: None,
+        }));
+    }
     Ok(Document {
         width: header.width,
         height: header.height,
