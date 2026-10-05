@@ -1,7 +1,7 @@
-use softpsd::{Blend, Channels, Document, Format, Image, Layer, Mask, Node, Rect, rle, validate};
+use softpsd::{
+    Blend, Channels, Document, Format, Group, Image, Layer, Mask, Node, Rect, rle, validate,
+};
 use std::collections::HashSet;
-
-// TODO: write_smoke_parses.
 
 #[test]
 fn rle_round_trip() {
@@ -109,4 +109,131 @@ fn validate_refuses() {
     doc.merged.rect.right = 31_000;
     doc.merged.data.resize(31_000 * 4, 0);
     assert!(validate::validate(&doc, Format::Psd).is_err());
+}
+
+fn smoke_document() -> Document {
+    let layer = Layer {
+        name: String::from("Painted"),
+        visible: true,
+        opacity: 153,
+        blend: Blend::Multiply,
+        clip_to_below: false,
+        pixels: Image {
+            rect: Rect {
+                top: 8,
+                left: 8,
+                bottom: 40,
+                right: 40,
+            },
+            data: [200, 30, 30, 255].repeat(32 * 32),
+        },
+        mask: Some(Mask {
+            rect: Rect {
+                top: 16,
+                left: 16,
+                bottom: 48,
+                right: 48,
+            },
+            data: vec![255; 32 * 32],
+            default: 0,
+            disabled: false,
+            inverted: false,
+        }),
+    };
+    let mut merged = vec![0; 64 * 64 * 4];
+    for y in 16..40 {
+        for x in 16..40 {
+            let offset = (y * 64 + x) * 4;
+            merged[offset..offset + 4].copy_from_slice(&[200, 30, 30, 153]);
+        }
+    }
+    Document {
+        width: 64,
+        height: 64,
+        channels: Channels::Rgba,
+        icc_profile: None,
+        resolution_dpi: None,
+        layers: vec![Node::Group(Group {
+            name: String::from("Group A"),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            expanded: true,
+            mask: None,
+            children: vec![Node::Layer(layer)],
+        })],
+        merged: Image {
+            rect: Rect {
+                top: 0,
+                left: 0,
+                bottom: 64,
+                right: 64,
+            },
+            data: merged,
+        },
+    }
+}
+
+struct Walker<'a>(&'a [u8]);
+
+impl<'a> Walker<'a> {
+    fn take(&mut self, len: usize) -> &'a [u8] {
+        let (data, remaining) = self.0.split_at(len);
+        self.0 = remaining;
+        data
+    }
+
+    fn u16(&mut self) -> u16 {
+        u16::from_be_bytes(self.take(2).try_into().unwrap())
+    }
+
+    fn u32(&mut self) -> u32 {
+        u32::from_be_bytes(self.take(4).try_into().unwrap())
+    }
+}
+
+#[test]
+fn write_smoke_parses() {
+    let mut bytes = Vec::new();
+    softpsd::write(&smoke_document(), Format::Psd, &mut bytes).unwrap();
+    let mut file = Walker(&bytes);
+    assert_eq!(file.take(4), b"8BPS");
+    assert_eq!(file.u16(), 1);
+    file.take(6);
+    file.u16();
+    file.u32();
+    file.u32();
+    file.u16();
+    file.u16();
+    let colour_len = file.u32() as usize;
+    file.take(colour_len);
+    let resources_len = file.u32() as usize;
+    file.take(resources_len);
+    let layer_mask_len = file.u32() as usize;
+    let mut layer_mask = Walker(file.take(layer_mask_len));
+    let layer_info_len = layer_mask.u32() as usize;
+    let mut layer_info = Walker(layer_mask.take(layer_info_len));
+    let count = i16::from_be_bytes(layer_info.take(2).try_into().unwrap());
+    assert_eq!(count, -3);
+    let mut names = Vec::new();
+    for _ in 0..count.unsigned_abs() {
+        layer_info.take(16);
+        let channels = layer_info.u16();
+        for _ in 0..channels {
+            layer_info.u16();
+            layer_info.u32();
+        }
+        layer_info.take(8);
+        layer_info.take(4);
+        let extra_len = layer_info.u32() as usize;
+        let mut extra = Walker(layer_info.take(extra_len));
+        let mask_len = extra.u32() as usize;
+        extra.take(mask_len);
+        let ranges_len = extra.u32() as usize;
+        extra.take(ranges_len);
+        let name_len = extra.take(1)[0] as usize;
+        names.push(String::from_utf8(extra.take(name_len).to_vec()).unwrap());
+    }
+    assert_eq!(names.len(), 3);
+    assert_eq!(names, ["</Layer group>", "Painted", "Group A"]);
 }
