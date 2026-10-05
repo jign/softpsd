@@ -1,0 +1,6 @@
+target/
+Cargo.lock
+*.psd
+*.psb
+!tests/fixtures/*.psd
+!tests/fixtures/*.psb
