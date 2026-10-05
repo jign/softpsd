@@ -40,3 +40,20 @@ The wide `psb` fixture uses `.psb` paths in the catalog and gate runner. PNG exp
 use native saving so widths above 30,000 pixels avoid Save for Web size warnings.
 Pixel comparisons use stored values without ICC conversion. For version 2 files only,
 the psd-tools adapter selects the PSB side limit while retaining allocation guards.
+
+Corpus checks:
+
+```powershell
+tools\fetch-corpus.ps1
+cargo test --features corpus
+tools\.venv\Scripts\python.exe tools\readers\corpus-check.py
+tools\corpus-triage.ps1
+```
+
+The fetcher keeps shallow sparse upstream clones in gitignored `corpus/`; reruns pull.
+The optional test checks every PSD/PSB for reader panics and writes `target/corpus.txt`;
+files above 64 MB are listed as skipped. The tree comparator builds the Rust dump once,
+compares each file with psd-tools and writes `target/corpus-check.txt`. Its classification
+counts are informational. The Photoshop triage tool opens each malformed file, counts
+root layers, closes without saving and writes `target/corpus-triage.txt`; it skips files
+already open in Photoshop.
