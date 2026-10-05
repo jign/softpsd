@@ -12,8 +12,10 @@ fn name(value: &str) -> String {
         .replace(['\r', '\n'], " ")
 }
 
-fn mask_bounds(mask: Option<&Mask>) -> String {
-    mask.map_or_else(String::new, |mask| format!(" mask={}", bounds(mask.rect)))
+fn mask_state(mask: Option<&Mask>) -> String {
+    mask.map_or_else(String::new, |mask| {
+        format!(" mask={}", if mask.disabled { "off" } else { "on" })
+    })
 }
 
 fn blend_name(blend: Blend) -> String {
@@ -35,7 +37,7 @@ fn print_tree(nodes: &[Node], depth: usize) {
                     group.opacity,
                     blend_name(group.blend),
                     group.visible,
-                    mask_bounds(group.mask.as_ref()),
+                    mask_state(group.mask.as_ref()),
                 );
                 print_tree(&group.children, depth + 1);
             }
@@ -46,7 +48,7 @@ fn print_tree(nodes: &[Node], depth: usize) {
                 blend_name(layer.blend),
                 layer.visible,
                 bounds(layer.pixels.rect),
-                mask_bounds(layer.mask.as_ref()),
+                mask_state(layer.mask.as_ref()),
             ),
         }
     }

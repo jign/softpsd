@@ -19,33 +19,12 @@
         return executeActionGet(ref);
     }
 
-    function maskBounds(layer, descriptor) {
+    function maskState(descriptor) {
         var hasMask = stringIDToTypeID("hasUserMask");
         if (!descriptor.hasKey(hasMask) || !descriptor.getBoolean(hasMask)) {
             return "";
         }
-        try {
-            doc.activeLayer = layer;
-            var channel = new ActionReference();
-            channel.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), charIDToTypeID("Msk "));
-            var select = new ActionDescriptor();
-            select.putReference(charIDToTypeID("null"), channel);
-            select.putBoolean(stringIDToTypeID("makeVisible"), false);
-            executeAction(charIDToTypeID("slct"), select, DialogModes.NO);
-
-            var selection = new ActionReference();
-            selection.putProperty(charIDToTypeID("Chnl"), charIDToTypeID("fsel"));
-            var load = new ActionDescriptor();
-            load.putReference(charIDToTypeID("null"), selection);
-            load.putReference(charIDToTypeID("T   "), channel);
-            executeAction(charIDToTypeID("setd"), load, DialogModes.NO);
-            return " mask=" + bounds(doc.selection.bounds);
-        } catch (e) {
-            return " mask=?";
-        } finally {
-            doc.selection.deselect();
-            doc.activeChannels = doc.componentChannels;
-        }
+        return " mask=" + (descriptor.getBoolean(stringIDToTypeID("userMaskEnabled")) ? "on" : "off");
     }
 
     function layerBounds(layer, descriptor) {
@@ -73,7 +52,7 @@
             line += " blend=" + String(layer.blendMode).replace(/^BlendMode\./, "");
             line += " visible=" + descriptor.getBoolean(stringIDToTypeID("visible"));
             line += " bounds=" + layerBounds(layer, descriptor);
-            line += maskBounds(layer, descriptor);
+            line += maskState(descriptor);
             lines.push(line);
             if (group) {
                 walk(layer.layers, indent + "  ", lines);
