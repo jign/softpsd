@@ -34,3 +34,8 @@ catalog from `tests/common/fixtures.rs`, exposed by `cargo run --example fixture
 `-Make` first creates each Photoshop fixture with its script, replacing the saved fixture.
 Failures name the fixture and gate. The individual writer and reader gates accept PSD
 and PSB paths.
+
+The wide `psb` fixture uses `.psb` paths in the catalog and gate runner. PNG exports
+use native saving so widths above 30,000 pixels avoid Save for Web size warnings.
+Pixel comparisons use stored values without ICC conversion. For version 2 files only,
+the psd-tools adapter selects the PSB side limit while retaining allocation guards.

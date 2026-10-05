@@ -46,30 +46,63 @@ saved nested: layerSectionExpanded unavailable; groups left open
 fixture nested: passed
 ```
 
-**Stopped: blends.** The writer gate's merged comparison passes with zero differences.
-Both files decode to their complete expected documents, and the Photoshop-made file's
-reader gate passes with zero differences for all 27 layers. Our file's reader tree gate
-fails: Photoshop reports full-canvas bounds for ColorBurn, ColorDodge and Difference,
-even before PNG export. All three descriptor keys (`bounds`, `boundsNoMask`,
-`boundsNoEffects`) report `0,0,32,32` for our file, but the correct 1-pixel rects for its
-own file. This contradicts the lab claim that `boundsNoMask` is the stored pixel rect.
+The blends finding was resolved by the reviewer's spec amendments (9dd274d and
+0daeee1, already local). Every pixel record now carries `clbl=01 00 00 00`,
+`infx=00 00 00 00`, `knko=00 00 00 00` after `lyid`; groups and ends do not.
+Previously Photoshop reported canvas bounds for ColorBurn, ColorDodge and Difference
+although both files stored their correct one-pixel rects. With these defaults, both
+blends gates pass with zero pixel differences and the seventh pair is committed.
 
-Raw layer rect bytes (top, left, bottom, right), identical in both files:
+All three gate scripts set console output to UTF-8. The name gate also passes from a
+fresh `powershell -NoProfile` session. No document dumps appear on fixture mismatch.
 
-| Layer | Key | Rect bytes |
-| --- | --- | --- |
-| ColorBurn | `idiv` | `00000000 00000004 00000001 00000005` |
-| ColorDodge | `div ` | `00000000 00000009 00000001 0000000A` |
-| Difference | `diff` | `00000000 00000013 00000001 00000014` |
+## Chunk 3: writer features
 
-First failing tree lines, softpsd then Photoshop:
+Validation and writing now support RGB, ICC resource 1039, resolution resource 1005,
+and PSB. RGB writes three merged planes, no white blend, and a positive layer count;
+pixel layers retain alpha. Resolution uses rounded unsigned 16.16 values and rejects
+nonfinite, nonpositive or unrepresentable values before writing. PSB uses version 2,
+u64 section/info/channel lengths and u32 RLE row counts, including the merged table.
+A scratch probe round-trips RGB/RGBA in both formats with an odd-length ICC payload,
+96 ppi, groups and masks; invalid resolutions produce no output.
+
+Accepted: **icc** and **psb**, each committed with its builder, script and two files.
+Photoshop saves the opaque Wide composite as RGB while our PSB exercises RGBA; the
+Photoshop expectation reflects its count sign. Both files' merged and layer pixels match.
+PSB fixture paths use `.psb`, matching Photoshop's save extension.
+
+The installed psd-tools pixel guard incorrectly applies the 30,000-pixel PSD limit to
+version 2 files. The comparison adapter temporarily uses the 300,000-pixel PSB limit
+for version 2 only, restores the previous limit afterwards, and keeps allocation guards.
+No decoder or fixture data was modified to pass a comparison.
+
+Save for Web produced the full 30,001 × 8 PNG but displayed size warnings. The dump
+now uses native `PNGSaveOptions` saving; merged comparison disables ICC conversion to
+compare stored channel values with PNG pixels. Smoke, ICC and PSB pass again. ICC had
+also passed before this switch; its colour profile required no workaround.
+
+**Stopped: flat.** Our RGB writer fixture passes its writer and reader gates, including
+zero merged/layer pixel differences. Photoshop's WHITE document, painted directly on
+Background and saved with layers enabled, has zero layer-info length. Our reader correctly
+returns no layers under the existing zero-length rule, whereas Photoshop synthesizes a
+Background layer when opening the file. This conflicts with the planned one-layer
+Photoshop expectation and reader tree gate. No reader or model workaround was made.
+
+Layer/mask section bytes (big endian):
+
+| File | Offset | Section length | Layer-info length | Next bytes |
+| --- | ---: | --- | --- | --- |
+| Photoshop flat | 20896 | `00 00 03 3C` | `00 00 00 00` | `00 00 00 00 38 42 49 4D` |
+| Our flat | 120 | `00 00 03 6C` | `00 00 03 64` | `00 01` (one layer) |
 
 ```text
-layer 'Difference' opacity=255 blend=DIFFERENCE visible=true bounds=19,0,20,1
-layer 'Difference' opacity=255 blend=DIFFERENCE visible=true bounds=0,0,32,32
+Fixture 'flat' failed at 'reader gate (Photoshop)':
+Tree differs at line 1: softpsd=<missing>;
+Photoshop=layer 'Background' opacity=255 blend=NORMAL visible=true bounds=0,0,32,32
 ```
 
-Photoshop's records also carry `clbl=01 00 00 00`, `infx=00 00 00 00` and
-`knko=00 00 00 00`; our file omits them. No spec or writer change, bounds workaround,
-or fixture commit was made. The stopped builder, script and both files are preserved
-locally under `target/phase3-pending/blends/`, outside the accepted catalog, for review.
+The stopped flat builder, script and both files are preserved under
+`target/phase3-pending/flat/`, outside the accepted catalog, for review.
+The accepted catalog now has ten pairs. Its full gate passes, all comparisons report
+zero differences, and the seven Rust tests, formatting and Clippy pass. ICC and PSB
+each reject a mutated stored opacity byte with a fixture-specific failure.

@@ -12,3 +12,4 @@ doc/ref/local/
 *.rgba
 *.psd.png
 *.psb.png
+__pycache__/
