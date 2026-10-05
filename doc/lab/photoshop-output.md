@@ -21,8 +21,13 @@ Channel ids: -1 alpha, 0 1 2 RGB, -2 user mask. Every layer, including groups an
 
 Tagged blocks on every layer: `luni` unicode name, `lyid` layer id, `lspf` protected,
 `lclr` sheet colour, `shmd` metadata, `fxrp` reference point. Groups add `lsct` section
-divider. Pixel layers add `clbl`, `infx`, `knko`. `lnsr` name source appears on default-named
-layers only.
+divider. Pixel layers add `clbl` (`01 00 00 00`), `infx` (`00 00 00 00`), `knko`
+(`00 00 00 00`). `lnsr` name source appears on default-named layers only.
+
+A pixel layer with none of `clbl`, `infx`, `knko` and a ColorBurn, ColorDodge or Difference
+blend reports `bounds` and `boundsNoMask` as the canvas, not the stored rect. The composite
+is unchanged. Adding any one of the three blocks fixes it; Photoshop's own files have all
+three. Measured on 1 × 1 layers in a 32 × 32 document.
 
 Image resources written: caption digest, XMP, print information, resolution, print scale, alpha
 channel names and identifiers, global angle and altitude, print flags, layer state, layer

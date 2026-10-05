@@ -174,6 +174,12 @@ Blend keys:
 | `luni` | u32 char count, UTF-16BE name, padded to 4 | every layer |
 | `lyid` | u32 unique id | every layer |
 | `lsct` | u32 kind: 1 open group, 2 closed group, 3 group end; for kind 1 or 2 also `8BIM` + blend key, which is the group's blend (Photoshop leaves `norm` in the record) | groups and group-end records |
+| `clbl` `infx` `knko` | u8 then 3 zero bytes each: `clbl` 1 (blend clipped layers as group), `infx` 0 (blend interior effects), `knko` 0 (knockout none) | pixel layers |
+
+The three blending blocks carry Photoshop's defaults. Without them Photoshop reports a
+ColorBurn, ColorDodge or Difference layer's bounds as the whole canvas, measured on a 1 × 1
+layer; any one of the three present restores the stored rect. We write all three, as
+Photoshop does.
 
 A group is two records: the end marker (kind 3, name `</Layer group>`) comes first in file
 order, then the children, then the group itself (kind 1 or 2). That is because the file lists
@@ -184,7 +190,6 @@ Blocks Photoshop writes that we do not, and why:
 | Key | Holds | Why not |
 | --- | --- | --- |
 | `lnsr` | whether the name was typed or generated | nothing reads it |
-| `clbl` `infx` `knko` | Advanced Blending checkboxes | only meaningful with layer effects (`lfx2`), which the model does not have yet; they come with it |
 | `shmd` | layer metadata, layer-comps flag | no layer comps |
 | `fxrp` | Free Transform reference point | Photoshop resets it |
 | `lclr` | the colour label on the layer row | wanted: add with a `label` field when a caller has one |

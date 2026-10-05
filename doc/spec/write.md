@@ -14,8 +14,8 @@ pub fn format_for(width: u32, height: u32) -> Format;   // Psb above 30,000 on e
 - The merged image is always written. The caller supplies straight RGBA; the crate never
   composites layers. For Rgba documents the writer blends the merged RGB over white before
   writing, `(c * a + 255 * (255 - a) + 127) / 255` per channel, as Photoshop does.
-- Every layer gets `luni`, `lyid`, and for groups `lsct`. Nothing else. `lyid` counts up from
-  1 in file order.
+- Every layer gets `luni` and `lyid`; groups get `lsct`; pixel layers get `clbl`, `infx`,
+  `knko` with Photoshop's defaults. Nothing else. `lyid` counts up from 1 in file order.
 - Channel data is RLE. A row that would grow under PackBits is still written as RLE; a whole
   file is never raw. A layer with an empty rect writes each channel as 2 bytes (compression 0,
   no data).

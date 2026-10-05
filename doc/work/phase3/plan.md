@@ -61,6 +61,10 @@ Gate: `tools\gate-fixtures.ps1 smoke` passes and `cargo test` is seven green.
 
 ## Chunk 2: tree fixtures, no writer change expected
 
+Finding from the first pass, now in write.md and model.md: pixel layers get `clbl`, `infx`
+and `knko` with Photoshop's defaults, or Photoshop reports canvas bounds for three blend
+modes. The writer change is authorised; blends is gated again after it.
+
 Seven fixtures. Any writer change needed here is a finding; report it.
 
 | Name | `ours` | Photoshop script |
