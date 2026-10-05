@@ -33,8 +33,8 @@ For every fixture, `softpsd-<name>.psd` must:
 3. Open in Photoshop with the same tree, reported by `tools/photoshop/dump.jsx`, and
    Photoshop's own export of it to PNG must equal our merged image, exact.
 
-1 and 2 run on every `cargo test`; 2 skips when `tools/setup.ps1` has not run. 3 runs by
-hand before a release through `tools/gate-photoshop.ps1`, which needs Photoshop open.
+1 runs on every `cargo test` through the fixture loops. 2 and 3 run through
+`tools/gate-fixtures.ps1`, which needs `tools/setup.ps1` installed and Photoshop open.
 
 ## Reader gate
 
@@ -53,7 +53,7 @@ wrote is a bug. This runs by hand, `cargo test --features corpus`.
 | Photoshop 27 | `tools/photoshop/run.ps1` | writer 3, reader tree |
 | psd-tools | `tools/.venv` | writer 2, reader pixels, corpus |
 | ag-psd | `tools/readers/node_modules` | writer 2 |
-| PhotoshopAPI | `tools/.venv` | writer 2 |
+| PhotoshopAPI | `tools/readers/photoshopapi-dump.py` through `tools/.venv` | writer 2 |
 | GIMP, Krita | headless export to PNG | writer composite, when installed; skipped otherwise |
 
 ## Testing rules

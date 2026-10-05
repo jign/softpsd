@@ -20,6 +20,7 @@ function Invoke-GateStep {
 try {
     Invoke-GateStep 'psd-tools' $python @((Join-Path $PSScriptRoot 'readers\psd-tools-dump.py'), $psdPath)
     Invoke-GateStep 'ag-psd' 'node' @((Join-Path $PSScriptRoot 'readers\ag-psd-dump.js'), $psdPath)
+    Invoke-GateStep 'PhotoshopAPI' $python @((Join-Path $PSScriptRoot 'readers\photoshopapi-dump.py'), $psdPath)
 
     Write-Output '=== Photoshop ==='
     & (Join-Path $PSScriptRoot 'photoshop\run.ps1') (Join-Path $PSScriptRoot 'photoshop\dump.jsx') -Out $psdPath -ErrorAction Stop
