@@ -1,6 +1,6 @@
 //! Document validation before output.
 
-use crate::{Blend, Channels, Document, Error, Format, Mask, Node, Rect, Result};
+use crate::{Blend, Document, Error, Format, Mask, Node, Rect, Result};
 
 pub fn validate(doc: &Document, format: Format) -> Result<()> {
     let side_limit = match format {
@@ -27,12 +27,11 @@ pub fn validate(doc: &Document, format: Format) -> Result<()> {
     validate_rect(doc.merged.rect)?;
     validate_rects(&doc.layers)?;
 
-    if doc.channels == Channels::Rgb
-        || format == Format::Psb
-        || doc.icc_profile.is_some()
-        || doc.resolution_dpi.is_some()
-    {
-        return Err(Error::Unsupported("phase 1"));
+    if let Some(dpi) = doc.resolution_dpi {
+        let fixed = (f64::from(dpi) * 65_536.0).round();
+        if !dpi.is_finite() || dpi <= 0.0 || fixed < 1.0 || fixed > f64::from(u32::MAX) {
+            return Err(Error::Malformed("resolution"));
+        }
     }
     Ok(())
 }
