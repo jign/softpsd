@@ -20,10 +20,14 @@ Not in v1: 16 and 32-bit, CMYK, duotone, vector masks, layer effects, smart obje
 - `doc/spec/model.md`: the data model and the byte layout it maps to.
 - `doc/spec/write.md`, `doc/spec/read.md`: what each direction does and refuses.
 - `doc/spec/gates.md`: fixtures, the Photoshop oracle, third-party cross-checks.
-- `doc/work/`: the plan and one folder per phase.
+- `doc/work/`: the plan and one folder per phase. Internal: this is the order the maintainers
+  are building it in, not a list of open tasks. Do not pick a phase up on your own.
 - `doc/lab/`: findings. `doc/ref/`: external specs and reference clones.
 
 ## Contributing
+
+Not yet. While the notice at the top is up, pull requests are not taken; the design is still
+moving and a PR would collide with it. Once it comes down: open an issue first.
 
 A PR that changes the writer comes with a fixture a real Photoshop opened.
 A reader bug report comes with the file that broke it.
