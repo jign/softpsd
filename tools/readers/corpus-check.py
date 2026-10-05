@@ -56,7 +56,7 @@ def first_difference(ours, theirs):
 
 def main():
     subprocess.run(["cargo", "build", "--example", "dump"], cwd=ROOT, check=True)
-    dump = ROOT / "target/debug" / ("dump.exe" if sys.platform == "win32" else "dump")
+    dump = ROOT / "target/debug/examples" / ("dump.exe" if sys.platform == "win32" else "dump")
     files = sorted(p for p in (ROOT / "corpus").rglob("*") if p.suffix.lower() in (".psd", ".psb") and p.is_file())
     counts = Counter()
     with (ROOT / "target/corpus-check.txt").open("w", encoding="utf-8") as report:
@@ -88,3 +88,4 @@ if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
     sys.exit(main())
+
