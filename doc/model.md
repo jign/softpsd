@@ -184,7 +184,7 @@ Blocks Photoshop writes that we do not, and why:
 | Key | Holds | Why not |
 | --- | --- | --- |
 | `lnsr` | whether the name was typed or generated | nothing reads it |
-| `clbl` `infx` `knko` | Advanced Blending checkboxes | defaults match ours; no effects to blend |
+| `clbl` `infx` `knko` | Advanced Blending checkboxes | only meaningful with layer effects (`lfx2`), which the model does not have yet; they come with it |
 | `shmd` | layer metadata, layer-comps flag | no layer comps |
 | `fxrp` | Free Transform reference point | Photoshop resets it |
 | `lclr` | the colour label on the layer row | wanted: add with a `label` field when a caller has one |

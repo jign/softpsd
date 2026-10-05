@@ -11,7 +11,7 @@ Built for [Soft Edge](https://soft-edge-roadmap.pages.dev). Write path first.
 - Read: the subset the writer emits. Anything else is refused with `Error::Unsupported`,
   never guessed.
 
-Not planned: 16 and 32-bit, CMYK, duotone, vector masks, smart objects, text layers.
+Not in v1: 16 and 32-bit, CMYK, duotone, vector masks, layer effects, smart objects, text layers. The format allows all of them; the model has no fields yet.
 
 ## Docs
 
