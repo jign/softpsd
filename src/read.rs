@@ -2,7 +2,6 @@
 
 use crate::{Document, Error, Format, Result};
 
-#[allow(dead_code)]
 struct Cursor<'a> {
     data: &'a [u8],
     pos: usize,
@@ -108,6 +107,76 @@ pub fn read_header(input: &[u8]) -> Result<Header> {
     })
 }
 
-pub fn read(_input: &[u8]) -> Result<Document> {
+#[allow(dead_code)]
+struct Resources {
+    icc_profile: Option<Vec<u8>>,
+    resolution_dpi: Option<f32>,
+}
+
+fn read_resources(cursor: &mut Cursor<'_>) -> Result<Resources> {
+    let length = u64::from(cursor.u32()?);
+    let mut blocks = Cursor::new(cursor.take(length)?);
+    let mut resources = Resources {
+        icc_profile: None,
+        resolution_dpi: None,
+    };
+    while blocks.remaining() != 0 {
+        if blocks.take(4)? != b"8BIM" {
+            return Err(Error::Malformed("image resources"));
+        }
+        let id = blocks.u16()?;
+        let name_len = u64::from(blocks.u8()?);
+        blocks.skip(name_len)?;
+        blocks.skip((name_len + 1) % 2)?;
+        let data_len = u64::from(blocks.u32()?);
+        let data = blocks.take(data_len)?;
+        blocks.skip(data_len % 2)?;
+        match id {
+            1039 => {
+                let mut profile = Vec::new();
+                profile
+                    .try_reserve_exact(data.len())
+                    .map_err(|_| Error::Malformed("image resources"))?;
+                profile.extend_from_slice(data);
+                resources.icc_profile = Some(profile);
+            }
+            1005 => {
+                let mut resolution = Cursor::new(data);
+                let value = resolution.u32()? as f32 / 65_536.0;
+                match resolution.u16()? {
+                    1 => resources.resolution_dpi = Some(value),
+                    2 => resources.resolution_dpi = Some(value * 2.54),
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(resources)
+}
+
+pub fn read(input: &[u8]) -> Result<Document> {
+    let header = read_header(input)?;
+    if header.depth != 8 {
+        return Err(Error::Unsupported("depth"));
+    }
+    if header.color_mode != 3 {
+        return Err(Error::Unsupported("colour mode"));
+    }
+    if !(3..=4).contains(&header.channel_count) {
+        return Err(Error::Unsupported("channel count"));
+    }
+    let side_limit = match header.format {
+        Format::Psd => 30_000,
+        Format::Psb => 300_000,
+    };
+    if !(1..=side_limit).contains(&header.width) || !(1..=side_limit).contains(&header.height) {
+        return Err(Error::Malformed("header"));
+    }
+    let mut cursor = Cursor::new(input);
+    cursor.skip(26)?;
+    let colour_len = u64::from(cursor.u32()?);
+    cursor.skip(colour_len)?;
+    let _resources = read_resources(&mut cursor)?;
     Err(Error::Unsupported("not implemented"))
 }
