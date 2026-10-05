@@ -165,6 +165,7 @@ struct RawLayer {
     mask: Option<Mask>,
     name: String,
     section: u32,
+    section_blend: Option<Blend>,
 }
 
 #[allow(dead_code)]
@@ -172,14 +173,26 @@ struct LayerRecords<'a> {
     channels: Channels,
     records: Vec<RawLayer>,
     info: Cursor<'a>,
-    section: Cursor<'a>,
+    section: Option<Cursor<'a>>,
 }
 
 fn read_layer_records<'a>(cursor: &mut Cursor<'a>, header: Header) -> Result<LayerRecords<'a>> {
     let length = cursor.len(header.format)?;
     let mut section = Cursor::new(cursor.take(length)?);
-    let length = section.len(header.format)?;
+    let length = if length == 0 {
+        0
+    } else {
+        section.len(header.format)?
+    };
     let mut info = Cursor::new(section.take(length)?);
+    if length == 0 {
+        return Ok(LayerRecords {
+            channels: Channels::Rgb,
+            records: Vec::new(),
+            info,
+            section: None,
+        });
+    }
     let count = info.i16()?;
     let channels = if count < 0 {
         if header.channel_count < 4 {
@@ -204,7 +217,7 @@ fn read_layer_records<'a>(cursor: &mut Cursor<'a>, header: Header) -> Result<Lay
         channels,
         records,
         info,
-        section,
+        section: Some(section),
     })
 }
 
@@ -348,6 +361,7 @@ fn read_record(cursor: &mut Cursor<'_>, format: Format) -> Result<RawLayer> {
     extra.skip(ranges_len)?;
     let mut name = read_pascal_name(&mut extra)?;
     let mut section = 0;
+    let mut section_blend = None;
     let mut refusal = None;
     while extra.remaining() != 0 {
         let signature = extra.bytes::<4>()?;
@@ -360,12 +374,23 @@ fn read_record(cursor: &mut Cursor<'_>, format: Format) -> Result<RawLayer> {
         match &key {
             b"luni" => name = read_unicode_name(data)?,
             b"lsct" => {
-                section = Cursor::new(data).u32()?;
+                let mut divider = Cursor::new(data);
+                section = divider.u32()?;
+                section_blend = None;
                 if section > 3 {
                     return Err(Error::Unsupported("section kind"));
                 }
                 if section == 0 {
                     refusal = refusal.or(Some("unknown section kind"));
+                }
+                if matches!(section, 1 | 2) && divider.remaining() != 0 {
+                    if divider.take(4)? != b"8BIM" {
+                        return Err(Error::Malformed("tagged block"));
+                    }
+                    section_blend = Some(
+                        Blend::from_key(&divider.bytes()?)
+                            .ok_or(Error::Unsupported("blend mode"))?,
+                    );
                 }
             }
             _ => refusal = refusal.or(refused_layer(&key)),
@@ -384,6 +409,7 @@ fn read_record(cursor: &mut Cursor<'_>, format: Format) -> Result<RawLayer> {
         mask,
         name,
         section,
+        section_blend,
     })
 }
 
