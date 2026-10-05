@@ -1,5 +1,7 @@
 # softpsd
 
+> **Not ready.** Nothing here reads or writes a file yet. Specs and tooling are being written; the API will change without notice. Do not depend on this crate.
+
 Read and write Adobe Photoshop PSD and PSB files in Rust.
 
 Built for [Soft Edge](https://soft-edge-roadmap.pages.dev). Write path first.
