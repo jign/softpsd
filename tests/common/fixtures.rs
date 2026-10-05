@@ -7,12 +7,13 @@ pub struct Fixture {
 }
 
 pub fn names() -> &'static [&'static str] {
-    &["smoke"]
+    &["smoke", "alpha"]
 }
 
 pub fn fixture(name: &str) -> Fixture {
     match name {
         "smoke" => smoke(),
+        "alpha" => alpha(),
         _ => panic!("unknown fixture: {name}"),
     }
 }
@@ -149,4 +150,70 @@ fn photoshop_profile(name: &str) -> Vec<u8> {
         }
     }
     panic!("Photoshop fixture has no ICC profile");
+}
+
+fn rect(top: i32, left: i32, bottom: i32, right: i32) -> Rect {
+    Rect {
+        top,
+        left,
+        bottom,
+        right,
+    }
+}
+
+fn solid(rect: Rect, colour: [u8; 4]) -> Image {
+    Image {
+        rect,
+        data: colour.repeat(rect.area().unwrap()),
+    }
+}
+
+fn fill(image: &mut Image, rect: Rect, colour: [u8; 4]) {
+    for y in rect.top..rect.bottom {
+        for x in rect.left..rect.right {
+            let offset = ((y - image.rect.top) as usize * image.rect.width()
+                + (x - image.rect.left) as usize)
+                * 4;
+            image.data[offset..offset + 4].copy_from_slice(&colour);
+        }
+    }
+}
+
+fn alpha() -> Fixture {
+    let mut merged = solid(rect(0, 0, 32, 32), [0, 0, 0, 0]);
+    fill(&mut merged, rect(4, 4, 12, 12), [0, 120, 255, 255]);
+    let ours = Document {
+        width: 32,
+        height: 32,
+        channels: Channels::Rgba,
+        icc_profile: None,
+        resolution_dpi: None,
+        layers: vec![Node::Layer(Layer {
+            name: "Dot".into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels: solid(rect(4, 4, 12, 12), [0, 120, 255, 255]),
+            mask: None,
+        })],
+        merged,
+    };
+    let mut photoshop = ours.clone();
+
+    photoshop.layers.insert(
+        0,
+        Node::Layer(Layer {
+            name: "Layer 1".into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels: solid(rect(0, 0, 0, 0), [0, 0, 0, 0]),
+            mask: None,
+        }),
+    );
+    photoshop.icc_profile = Some(photoshop_profile("alpha"));
+    photoshop.resolution_dpi = Some(72.0);
+    Fixture { ours, photoshop }
 }
