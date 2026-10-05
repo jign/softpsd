@@ -1,14 +1,14 @@
 # Phase 1 writer checks
 
-Steps 9–12 implemented. All four Rust tests, formatting, compilation and Clippy pass.
+Phase 1 complete. All four Rust tests, formatting, compilation and Clippy pass.
 The smoke parser fails with a positive layer count, then passes after restoration.
 The comparator rejects a two-level pixel change and accepts a one-level change.
-The gate stops at the first failing reader. The full smoke run exits 0; output below.
+The gate stops at the first failing reader. The full smoke gate passes; output below.
 
-The fixture gate remains pending: Photoshop's `layer.bounds` reports 16,16,40,40,
-where the stored layer rect is 8,8,40,40. Its rect bytes (top, left, bottom, right) are
-`00 00 00 08 00 00 00 08 00 00 00 28 00 00 00 28`. The mask rect is 16,16,48,48.
-No writer or spec workaround was made, and no accepted fixture was copied.
+Photoshop's `layer.bounds` is cut by the mask, including for its own fixture. The dump
+now uses `boundsNoMask`: Painted is 8,8,40,40; its mask is 16,16,48,48. The group's
+descriptor reports the canvas, 0,0,64,64. No unresolved writer discrepancy remains.
+Accepted fixture: `tests/fixtures/softpsd-smoke.psd`.
 
 ```text
 === psd-tools ===
@@ -27,8 +27,8 @@ ag-psd 64x64 channels=4 bits=8 mode=3 icc=false
     'Painted' opacity=0.6 blend=multiply bbox=8,8,40,40 mask 16,16,48,48 default=0 disabled=false
 resources: versionInfo
 === Photoshop ===
-group 'Group A' opacity=255 blend=NORMAL visible=true bounds=16,16,40,40
-  layer 'Painted' opacity=153 blend=MULTIPLY visible=true bounds=16,16,40,40 mask=16,16,48,48
+group 'Group A' opacity=255 blend=NORMAL visible=true bounds=0,0,64,64
+  layer 'Painted' opacity=153 blend=MULTIPLY visible=true bounds=8,8,40,40 mask=16,16,48,48
 === merged comparison ===
 differing pixels: 0
 first differing coordinate: None

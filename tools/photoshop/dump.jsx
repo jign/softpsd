@@ -45,6 +45,24 @@
         }
     }
 
+    function layerBounds(layer) {
+        doc.activeLayer = layer;
+        var ref = new ActionReference();
+        ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+        var descriptor = executeActionGet(ref);
+        var key = stringIDToTypeID("boundsNoMask");
+        if (!descriptor.hasKey(key)) {
+            return bounds(layer.bounds);
+        }
+        var rect = descriptor.getObjectValue(key);
+        var keys = ["left", "top", "right", "bottom"];
+        var result = [];
+        for (var i = 0; i < keys.length; i++) {
+            result.push(Math.round(rect.getUnitDoubleValue(stringIDToTypeID(keys[i]))));
+        }
+        return result.join(",");
+    }
+
     function walk(layers, indent, lines) {
         for (var i = 0; i < layers.length; i++) {
             var layer = layers[i];
@@ -53,7 +71,7 @@
             var line = indent + (group ? "group" : "layer") + " '" + name + "'";
             line += " opacity=" + Math.round(layer.opacity * 2.55);
             line += " blend=" + String(layer.blendMode).replace(/^BlendMode\./, "");
-            line += " visible=" + layer.visible + " bounds=" + bounds(layer.bounds);
+            line += " visible=" + layer.visible + " bounds=" + layerBounds(layer);
             line += maskBounds(layer);
             lines.push(line);
             if (group) {
