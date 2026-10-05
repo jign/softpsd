@@ -5,6 +5,7 @@ import sys
 
 from PIL import Image
 from psd_tools import PSDImage
+from psd_limits import pixel_limits
 
 
 def main():
@@ -13,7 +14,9 @@ def main():
     parser.add_argument("png")
     args = parser.parse_args()
     try:
-        merged = PSDImage.open(args.psd).topil()
+        psd = PSDImage.open(args.psd)
+        with pixel_limits(psd):
+            merged = psd.topil()
         if merged is None:
             raise ValueError("PSD has no stored merged image")
         merged = merged.convert("RGBA")

@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 from psd_tools import PSDImage
+from psd_limits import pixel_limits
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -96,7 +97,9 @@ def main():
             print(dump.stderr, file=sys.stderr, end="")
             return 1
         exports = read_exports(dump.stdout)
-        return 0 if compare_layers(exports, PSDImage.open(psd_path)) else 1
+        psd = PSDImage.open(psd_path)
+        with pixel_limits(psd):
+            return 0 if compare_layers(exports, psd) else 1
     except (OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 1
