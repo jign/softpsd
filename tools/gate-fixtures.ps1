@@ -4,6 +4,7 @@ param(
     [switch]$Make
 )
 
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $fixtureName = '<catalog>'

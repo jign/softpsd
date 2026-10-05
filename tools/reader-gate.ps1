@@ -3,6 +3,7 @@ param(
     [string]$Psd
 )
 
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $ErrorActionPreference = 'Stop'
 $psdPath = (Resolve-Path -LiteralPath $Psd).Path
 $root = Split-Path -Parent $PSScriptRoot
