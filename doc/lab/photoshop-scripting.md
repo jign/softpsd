@@ -20,6 +20,11 @@ Rules inside the script:
 - `layer.bounds` is the pixel rect cut by the layer mask, for Photoshop's own files too.
   The stored rect is the `boundsNoMask` key of the layer descriptor from `executeActionGet`;
   the DOM has no property for it.
+- Setting `doc.activeLayer` to a hidden layer makes it visible. Read layers through
+  `executeActionGet` with `putIdentifier("Lyr ", layer.id)` and take `visible` from the
+  descriptor; export the PNG before selecting anything.
+- Strings returned to PowerShell are Unicode, but a child process's stdout is decoded with
+  `[Console]::OutputEncoding`, cp1252 by default. Gate scripts set it to UTF-8 themselves.
 - A raster mask from the selection needs Action Manager:
   `Mk` with `Nw`=`Chnl`, `At`=mask channel, `Usng`=`UsrM`/`RvlS`. See `tools/photoshop/fixtures/smoke.jsx`.
 
