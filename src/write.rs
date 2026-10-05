@@ -1,6 +1,8 @@
 //! PSD/PSB writer.
 
-use crate::{Blend, Document, Error, Format, Group, Layer, Node, Rect, Result, rle, validate};
+use crate::{
+    Blend, Channels, Document, Error, Format, Group, Layer, Node, Rect, Result, rle, validate,
+};
 
 enum Record<'a> {
     Layer(&'a Layer),
@@ -26,11 +28,14 @@ struct Channel {
     data: Vec<u8>,
 }
 
-fn prepare_channels(records: &[Record<'_>]) -> Result<Vec<Vec<Channel>>> {
-    records.iter().map(record_channels).collect()
+fn prepare_channels(records: &[Record<'_>], format: Format) -> Result<Vec<Vec<Channel>>> {
+    records
+        .iter()
+        .map(|record| record_channels(record, format))
+        .collect()
 }
 
-fn record_channels(record: &Record<'_>) -> Result<Vec<Channel>> {
+fn record_channels(record: &Record<'_>, format: Format) -> Result<Vec<Channel>> {
     let mut channels = Vec::new();
     match record {
         Record::Layer(layer) if !layer.pixels.rect.is_empty() => {
@@ -43,7 +48,7 @@ fn record_channels(record: &Record<'_>) -> Result<Vec<Channel>> {
                     .collect();
                 channels.push(Channel {
                     id,
-                    data: encode_plane(&plane, layer.pixels.rect)?,
+                    data: encode_plane(&plane, layer.pixels.rect, format)?,
                 });
             }
         }
@@ -64,23 +69,32 @@ fn record_channels(record: &Record<'_>) -> Result<Vec<Channel>> {
     if let Some(mask) = mask {
         channels.push(Channel {
             id: -2,
-            data: encode_plane(&mask.data, mask.rect)?,
+            data: encode_plane(&mask.data, mask.rect, format)?,
         });
     }
     Ok(channels)
 }
 
 // Requires a validated plane buffer.
-fn encode_plane(data: &[u8], rect: Rect) -> Result<Vec<u8>> {
+fn encode_plane(data: &[u8], rect: Rect, format: Format) -> Result<Vec<u8>> {
     let width = rect.width();
     let mut channel = Vec::from(1u16.to_be_bytes());
     let mut rows = Vec::new();
     for y in 0..rect.height() {
         let start = rows.len();
         rle::encode_row(&data[y * width..(y + 1) * width], &mut rows);
-        let count =
-            u16::try_from(rows.len() - start).map_err(|_| Error::Unsupported("RLE row length"))?;
-        channel.extend_from_slice(&count.to_be_bytes());
+        match format {
+            Format::Psd => {
+                let count = u16::try_from(rows.len() - start)
+                    .map_err(|_| Error::Unsupported("RLE row length"))?;
+                channel.extend_from_slice(&count.to_be_bytes());
+            }
+            Format::Psb => {
+                let count = u32::try_from(rows.len() - start)
+                    .map_err(|_| Error::Unsupported("RLE row length"))?;
+                channel.extend_from_slice(&count.to_be_bytes());
+            }
+        }
     }
     channel.extend_from_slice(&rows);
     Ok(channel)
@@ -91,11 +105,11 @@ pub fn write(doc: &Document, format: Format, out: &mut impl std::io::Write) -> R
     let mut records = Vec::new();
     flatten(&doc.layers, &mut records);
     let count = i16::try_from(records.len()).map_err(|_| Error::Unsupported("layer count"))?;
-    let channels = prepare_channels(&records)?;
+    let channels = prepare_channels(&records, format)?;
     let mut layer_records = Vec::new();
     let mut layer_info_len = 2usize;
     for (index, (record, channels)) in records.iter().zip(&channels).enumerate() {
-        let bytes = encode_record(record, channels, index as u32 + 1)?;
+        let bytes = encode_record(record, channels, index as u32 + 1, format)?;
         layer_info_len = add_length(layer_info_len, bytes.len())?;
         layer_records.push(bytes);
         for channel in channels {
@@ -103,18 +117,28 @@ pub fn write(doc: &Document, format: Format, out: &mut impl std::io::Write) -> R
         }
     }
     let padding = (4 - layer_info_len % 4) % 4;
-    let layer_info_len = length(add_length(layer_info_len, padding)?)?;
+    let layer_info_len = add_length(layer_info_len, padding)? as u64;
     let layer_mask_len = layer_info_len
-        .checked_add(8)
+        .checked_add(if format == Format::Psd { 8 } else { 12 })
         .ok_or(Error::Unsupported("section length"))?;
-    let resources = image_resources()?;
+    if format == Format::Psd && layer_mask_len > u64::from(u32::MAX) {
+        return Err(Error::Unsupported("section length"));
+    }
+    let resources = image_resources(doc)?;
     let resources_len = length(resources.len())?;
-    let merged = merged_channels(doc)?;
+    let merged = merged_channels(doc, format)?;
+    let version: u16 = if format == Format::Psd { 1 } else { 2 };
+    let channel_count: u16 = if doc.channels == Channels::Rgb { 3 } else { 4 };
+    let count = if doc.channels == Channels::Rgba {
+        -count
+    } else {
+        count
+    };
 
     out.write_all(b"8BPS")?;
-    out.write_all(&1u16.to_be_bytes())?;
+    out.write_all(&version.to_be_bytes())?;
     out.write_all(&[0; 6])?;
-    out.write_all(&4u16.to_be_bytes())?;
+    out.write_all(&channel_count.to_be_bytes())?;
     out.write_all(&doc.height.to_be_bytes())?;
     out.write_all(&doc.width.to_be_bytes())?;
     out.write_all(&8u16.to_be_bytes())?;
@@ -122,9 +146,9 @@ pub fn write(doc: &Document, format: Format, out: &mut impl std::io::Write) -> R
     out.write_all(&0u32.to_be_bytes())?;
     out.write_all(&resources_len.to_be_bytes())?;
     out.write_all(&resources)?;
-    out.write_all(&layer_mask_len.to_be_bytes())?;
-    out.write_all(&layer_info_len.to_be_bytes())?;
-    out.write_all(&(-count).to_be_bytes())?;
+    write_length(out, layer_mask_len, format)?;
+    write_length(out, layer_info_len, format)?;
+    out.write_all(&count.to_be_bytes())?;
     for bytes in layer_records {
         out.write_all(&bytes)?;
     }
@@ -137,7 +161,8 @@ pub fn write(doc: &Document, format: Format, out: &mut impl std::io::Write) -> R
     out.write_all(&0u32.to_be_bytes())?;
 
     out.write_all(&1u16.to_be_bytes())?;
-    let row_counts_end = 2 + doc.height as usize * 2;
+    let count_size = if format == Format::Psd { 2 } else { 4 };
+    let row_counts_end = 2 + doc.height as usize * count_size;
     for channel in &merged {
         out.write_all(&channel[2..row_counts_end])?;
     }
@@ -157,6 +182,18 @@ pub fn format_for(width: u32, height: u32) -> Format {
 
 fn length(value: usize) -> Result<u32> {
     u32::try_from(value).map_err(|_| Error::Unsupported("section length"))
+}
+
+fn write_length(out: &mut impl std::io::Write, value: u64, format: Format) -> Result<()> {
+    match format {
+        Format::Psd => out.write_all(
+            &u32::try_from(value)
+                .map_err(|_| Error::Unsupported("section length"))?
+                .to_be_bytes(),
+        )?,
+        Format::Psb => out.write_all(&value.to_be_bytes())?,
+    }
+    Ok(())
 }
 
 fn add_length(left: usize, right: usize) -> Result<usize> {
@@ -193,24 +230,47 @@ fn tagged(out: &mut Vec<u8>, key: &[u8; 4], data: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn image_resources() -> Result<Vec<u8>> {
+fn resource(out: &mut Vec<u8>, id: u16, data: &[u8]) -> Result<()> {
+    out.extend_from_slice(b"8BIM");
+    out.extend_from_slice(&id.to_be_bytes());
+    out.extend_from_slice(&[0, 0]);
+    out.extend_from_slice(&length(data.len())?.to_be_bytes());
+    out.extend_from_slice(data);
+    pad(out, 2);
+    Ok(())
+}
+
+fn image_resources(doc: &Document) -> Result<Vec<u8>> {
+    let mut resources = Vec::new();
+    if let Some(dpi) = doc.resolution_dpi {
+        let fixed = (f64::from(dpi) * 65_536.0).round() as u32;
+        let mut resolution = Vec::new();
+        for _ in 0..2 {
+            resolution.extend_from_slice(&fixed.to_be_bytes());
+            resolution.extend_from_slice(&1u16.to_be_bytes());
+            resolution.extend_from_slice(&1u16.to_be_bytes());
+        }
+        resource(&mut resources, 1005, &resolution)?;
+    }
+    if let Some(profile) = &doc.icc_profile {
+        resource(&mut resources, 1039, profile)?;
+    }
     let mut data = Vec::new();
     data.extend_from_slice(&1u32.to_be_bytes());
     data.push(1);
     data.extend_from_slice(&unicode("softpsd")?);
     data.extend_from_slice(&unicode("softpsd")?);
     data.extend_from_slice(&1u32.to_be_bytes());
-    let mut resource = Vec::new();
-    resource.extend_from_slice(b"8BIM");
-    resource.extend_from_slice(&1057u16.to_be_bytes());
-    resource.extend_from_slice(&[0, 0]);
-    resource.extend_from_slice(&length(data.len())?.to_be_bytes());
-    resource.extend_from_slice(&data);
-    pad(&mut resource, 2);
-    Ok(resource)
+    resource(&mut resources, 1057, &data)?;
+    Ok(resources)
 }
 
-fn encode_record(record: &Record<'_>, channels: &[Channel], id: u32) -> Result<Vec<u8>> {
+fn encode_record(
+    record: &Record<'_>,
+    channels: &[Channel],
+    id: u32,
+    format: Format,
+) -> Result<Vec<u8>> {
     let empty_rect = Rect {
         top: 0,
         left: 0,
@@ -294,7 +354,7 @@ fn encode_record(record: &Record<'_>, channels: &[Channel], id: u32) -> Result<V
     bytes.extend_from_slice(&(channels.len() as u16).to_be_bytes());
     for channel in channels {
         bytes.extend_from_slice(&channel.id.to_be_bytes());
-        bytes.extend_from_slice(&length(channel.data.len())?.to_be_bytes());
+        write_length(&mut bytes, channel.data.len() as u64, format)?;
     }
     bytes.extend_from_slice(b"8BIM");
     bytes.extend_from_slice(&blend.key());
@@ -310,16 +370,17 @@ fn encode_record(record: &Record<'_>, channels: &[Channel], id: u32) -> Result<V
     Ok(bytes)
 }
 
-fn merged_channels(doc: &Document) -> Result<Vec<Vec<u8>>> {
-    (0..4)
+fn merged_channels(doc: &Document, format: Format) -> Result<Vec<Vec<u8>>> {
+    let count = if doc.channels == Channels::Rgb { 3 } else { 4 };
+    (0..count)
         .map(|offset| {
             let plane: Vec<u8> = doc
                 .merged
                 .data
                 .chunks_exact(4)
                 .map(|pixel| {
-                    if offset == 3 {
-                        pixel[3]
+                    if offset == 3 || doc.channels == Channels::Rgb {
+                        pixel[offset]
                     } else {
                         let c = u32::from(pixel[offset]);
                         let a = u32::from(pixel[3]);
@@ -327,7 +388,7 @@ fn merged_channels(doc: &Document) -> Result<Vec<Vec<u8>>> {
                     }
                 })
                 .collect();
-            encode_plane(&plane, doc.merged.rect)
+            encode_plane(&plane, doc.merged.rect, format)
         })
         .collect()
 }
