@@ -73,7 +73,7 @@ fn validate_refuses() {
         name: String::from("Painted"),
         visible: true,
         opacity: 255,
-        blend: Blend::PassThrough,
+        blend: Blend::Normal,
         clip_to_below: false,
         pixels: image.clone(),
         mask: None,
@@ -87,6 +87,10 @@ fn validate_refuses() {
         layers: vec![Node::Layer(layer.clone())],
         merged: image,
     };
+    assert!(validate::validate(&doc, Format::Psd).is_ok());
+
+    layer.blend = Blend::PassThrough;
+    doc.layers = vec![Node::Layer(layer.clone())];
     assert!(validate::validate(&doc, Format::Psd).is_err());
 
     layer.blend = Blend::Normal;
