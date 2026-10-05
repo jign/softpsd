@@ -1,7 +1,21 @@
-use softpsd::Blend;
+use softpsd::{Blend, rle};
 use std::collections::HashSet;
 
-// TODO: rle_round_trip, validate_refuses, write_smoke_parses.
+// TODO: validate_refuses, write_smoke_parses.
+
+#[test]
+fn rle_round_trip() {
+    let mut row = vec![42; 100];
+    row.extend((0..=255).cycle().take(300));
+    row.extend([17; 300]);
+    for row in [row, Vec::new()] {
+        let mut encoded = Vec::new();
+        rle::encode_row(&row, &mut encoded);
+        let mut decoded = Vec::new();
+        rle::decode_row(&encoded, row.len(), &mut decoded).unwrap();
+        assert_eq!(decoded, row);
+    }
+}
 
 #[test]
 fn blend_keys_round_trip() {
