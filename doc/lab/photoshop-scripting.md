@@ -21,7 +21,7 @@ Rules inside the script:
   The stored rect is the `boundsNoMask` key of the layer descriptor from `executeActionGet`;
   the DOM has no property for it.
 - A raster mask from the selection needs Action Manager:
-  `Mk` with `Nw`=`Chnl`, `At`=mask channel, `Usng`=`UsrM`/`RvlS`. See `tools/photoshop/smoke.jsx`.
+  `Mk` with `Nw`=`Chnl`, `At`=mask channel, `Usng`=`UsrM`/`RvlS`. See `tools/photoshop/fixtures/smoke.jsx`.
 
 Photoshop must be running with a user logged in. It is not headless. `tools/photoshop/run.ps1`
 runs any .jsx and prints what it returns. Environment variables set in the shell do not reach the running Photoshop; `run.ps1 -Out` injects a path as `OUT` instead.

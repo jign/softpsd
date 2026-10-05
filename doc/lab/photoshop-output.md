@@ -2,7 +2,7 @@
 
 From a 64x64 RGB document, transparent background, one group holding one painted layer at 60%
 Multiply with a raster mask. Fixture: `tests/fixtures/ps27-smoke.psd`, made by
-`tools/photoshop/smoke.jsx`.
+`tools/photoshop/fixtures/smoke.jsx`.
 
 Header: `8BPS`, version 1, 4 channels, 8-bit, RGB. Merged image RLE. Layer count negative: the
 merged image's first alpha channel is transparency. ICC profile (sRGB, 3144 bytes) in image

@@ -5,7 +5,7 @@ Two directions, four readers, one oracle. Photoshop decides every disagreement.
 ## Fixtures
 
 One per claim. Each exists in two forms: `ps27-<name>.psd` made by Photoshop through
-`tools/photoshop/<name>.jsx`, and `softpsd-<name>.psd` written by the crate from the same
+`tools/photoshop/fixtures/<name>.jsx`, and `softpsd-<name>.psd` written by the crate from the same
 model. Both live in `tests/fixtures/` and are small.
 
 | Name | Claim |
