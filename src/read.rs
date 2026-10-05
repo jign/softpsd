@@ -1,6 +1,8 @@
 //! PSD/PSB reader. Accepts the subset the writer emits.
 
-use crate::{Blend, Channels, Document, Error, Format, Image, Mask, Rect, Result, rle};
+use crate::{
+    Blend, Channels, Document, Error, Format, Group, Image, Layer, Mask, Node, Rect, Result, rle,
+};
 
 struct Cursor<'a> {
     data: &'a [u8],
@@ -154,7 +156,6 @@ fn read_resources(cursor: &mut Cursor<'_>) -> Result<Resources> {
     Ok(resources)
 }
 
-#[allow(dead_code)]
 struct RawLayer {
     rect: Rect,
     channels: Vec<(i16, u64)>,
@@ -412,7 +413,6 @@ fn read_record(cursor: &mut Cursor<'_>, format: Format) -> Result<RawLayer> {
     })
 }
 
-#[allow(dead_code)]
 struct DecodedLayer {
     record: RawLayer,
     pixels: Image,
@@ -567,6 +567,60 @@ fn read_channel_data(mut records: LayerRecords<'_>, format: Format) -> Result<La
     })
 }
 
+fn build_tree(layers: Vec<DecodedLayer>) -> Result<Vec<Node>> {
+    let mut root = Vec::new();
+    let mut stack: Vec<Vec<Node>> = Vec::new();
+    for DecodedLayer { record, pixels } in layers {
+        let node = match record.section {
+            3 => {
+                if stack.len() == 64 {
+                    return Err(Error::Malformed("nesting"));
+                }
+                stack
+                    .try_reserve(1)
+                    .map_err(|_| Error::Malformed("allocation"))?;
+                stack.push(Vec::new());
+                continue;
+            }
+            1 | 2 => {
+                let children = stack.pop().ok_or(Error::Malformed("group nesting"))?;
+                Node::Group(Group {
+                    name: record.name,
+                    visible: record.visible,
+                    opacity: record.opacity,
+                    blend: record.section_blend.unwrap_or(record.blend),
+                    expanded: record.section == 1,
+                    mask: record.mask,
+                    children,
+                })
+            }
+            _ => {
+                if record.blend == Blend::PassThrough {
+                    return Err(Error::Malformed("pass through on a layer"));
+                }
+                Node::Layer(Layer {
+                    name: record.name,
+                    visible: record.visible,
+                    opacity: record.opacity,
+                    blend: record.blend,
+                    clip_to_below: record.clipped,
+                    pixels,
+                    mask: record.mask,
+                })
+            }
+        };
+        let nodes = stack.last_mut().unwrap_or(&mut root);
+        nodes
+            .try_reserve(1)
+            .map_err(|_| Error::Malformed("allocation"))?;
+        nodes.push(node);
+    }
+    if !stack.is_empty() {
+        return Err(Error::Malformed("group nesting"));
+    }
+    Ok(root)
+}
+
 pub fn read(input: &[u8]) -> Result<Document> {
     let header = read_header(input)?;
     if header.depth != 8 {
@@ -591,6 +645,7 @@ pub fn read(input: &[u8]) -> Result<Document> {
     cursor.skip(colour_len)?;
     let _resources = read_resources(&mut cursor)?;
     let records = read_layer_records(&mut cursor, header)?;
-    let _layers = read_channel_data(records, header.format)?;
+    let layers = read_channel_data(records, header.format)?;
+    let _tree = build_tree(layers.layers)?;
     Err(Error::Unsupported("not implemented"))
 }
