@@ -167,19 +167,13 @@ fn fixtures_round_trip() {
         let format = softpsd::format_for(expected.width, expected.height);
         let mut bytes = Vec::new();
         softpsd::write(&expected, format, &mut bytes).unwrap();
-        assert_eq!(
-            softpsd::read(&bytes).unwrap(),
-            expected,
-            "fixture {name}: round trip"
-        );
+        let actual = softpsd::read(&bytes).unwrap();
+        assert!(actual == expected, "fixture {name}: round trip");
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join(format!("tests/fixtures/softpsd-{name}.psd"));
         let bytes = std::fs::read(path).unwrap();
-        assert_eq!(
-            softpsd::read(&bytes).unwrap(),
-            expected,
-            "fixture {name}: stored file"
-        );
+        let actual = softpsd::read(&bytes).unwrap();
+        assert!(actual == expected, "fixture {name}: stored file");
     }
 }
 
@@ -190,11 +184,8 @@ fn fixtures_read_photoshop() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join(format!("tests/fixtures/ps27-{name}.psd"));
         let bytes = std::fs::read(path).unwrap();
-        assert_eq!(
-            softpsd::read(&bytes).unwrap(),
-            expected,
-            "fixture {name}: Photoshop"
-        );
+        let actual = softpsd::read(&bytes).unwrap();
+        assert!(actual == expected, "fixture {name}: Photoshop");
     }
 }
 
