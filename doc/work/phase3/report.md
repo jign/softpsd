@@ -51,22 +51,12 @@ against psd-tools' merged image. Flat passes with profile and 72 ppi added to it
 expectation and is committed as pair eleven. All seven tests and Clippy pass; mutated
 flat/ICC/PSB opacities are rejected.
 
-## Chunk 4: mask-white finding
+## Chunk 4: mask-white
 
-**Stopped for review; no fixture committed.** The three-layer writer gate passes with zero
-merged differences, but Disabled covers the whole canvas and conceals Inverted's behavior.
-Separate native PNG exports hide the other two layers before testing each mask:
-
-| Layer | Shown pixels | Pixel (0,0) alpha | Pixel (16,16) alpha |
-| --- | ---: | ---: | ---: |
-| White | 768 | 255 | 0 |
-| Disabled | 1024 | 255 | 255 |
-| Inverted | 1024 | 255 | 255 |
-
-Inverted should show only 256 pixels inside the hole under the model. Photoshop instead
-shows it at full. The plan's finding is **strike `inverted` from the model**. No model or
-writer change was made. Our mask blocks (excluding length/padding), top/left/bottom/right,
-default and flags, are:
+The initial three-layer probe showed White at 768 visible pixels, Disabled at 1024,
+and Inverted at 1024 rather than the modeled 256. Other layers were hidden individually
+for these exports because Disabled's full-canvas red would conceal the inversion result.
+Stored mask bytes (top/left/bottom/right, default, flags) were:
 
 ```text
 White:    00000008 00000008 00000018 00000018 FF 00
@@ -74,13 +64,29 @@ Disabled: 00000008 00000008 00000018 00000018 00 02
 Inverted: 00000008 00000008 00000018 00000018 00 04
 ```
 
-Photoshop's Hide Selection White has identical bytes. Its all-black Disabled mask is
-trimmed to `00000000 00000000 00000000 00000000 00 02`; its opaque composite is RGB.
-The tree gate also exposes an oracle limitation: loading the mask as selection reports
-nonzero selection bounds, not its stored rect. White reports `mask=0,0,32,32` instead of
-`8,8,24,24`; empty Disabled reports `mask=?`. Both reader gates fail those comparisons.
-No bound workaround or expected-mask adjustment was made.
+Reviewer commit cd40217 (already local) ruled the findings. `inverted` is removed from
+Mask, reader, writer and builders; mask flags now carry only disabled. The accepted fixture
+has White and Disabled. Photoshop trims its all-default Disabled mask to
+`00000000 00000000 00000000 00000000 00 02`, with no data; its expected model reflects
+that and the opaque RGB composite, profile, 72 ppi and empty bottom Layer 1.
 
-Builder, script, both PSDs, individual PNGs, probe and gate logs are preserved in
-`target/phase3-pending/mask-white/`. All eleven accepted pairs pass the full fixture gate;
-seven tests, formatting and Clippy pass. Phase 3 awaits the mask finding decision.
+Loading a mask as selection measures its selected area rather than stored rect. Both dumps
+now print `mask=on/off`: Photoshop reads `userMaskEnabled` from the layer descriptor;
+Rust reads `disabled`. The dump no longer selects mask channels. Stored mask rects remain
+checked through library dumps and document round trips.
+
+```text
+layer 'Disabled' opacity=255 blend=NORMAL visible=true bounds=0,0,32,32 mask=off
+layer 'White' opacity=255 blend=NORMAL visible=true bounds=0,0,32,32 mask=on
+fixture mask-white: passed
+```
+
+Mask-white passes both gates with zero merged/layer pixel differences and is committed
+with its script and builder as pair twelve. A mutated stored opacity is rejected with
+the fixture name. The original probe and findings remain under
+`target/phase3-pending/mask-white/` for reference.
+
+The final `tools/gate-fixtures.ps1` invocation passes all twelve pairs: smoke, alpha,
+hidden, clip, nested, empty, name, blends, icc, psb, flat and mask-white. Every merged/layer
+comparison reports zero differences. `cargo test` is seven green; formatting and Clippy
+also pass. Phase 3 is complete; no unresolved findings remain.
