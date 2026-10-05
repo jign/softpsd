@@ -73,13 +73,11 @@ try {
         $script = @"
 (begin
   (script-fu-use-v3)
-  (gimp-context-push)
-  (gimp-context-set-background "white")
-  (let* ((image (gimp-file-load RUN-NONINTERACTIVE "$source")))
-    (gimp-image-flatten image)
+  (let* ((image (gimp-file-load RUN-NONINTERACTIVE "$source"))
+         (layer (gimp-image-merge-visible-layers image CLIP-TO-IMAGE)))
+    (gimp-image-set-selected-layers image (vector layer))
     (file-png-export #:run-mode RUN-NONINTERACTIVE #:image image #:file "$destination" #:options -1 #:include-color-profile #t)
-    (gimp-image-delete image))
-  (gimp-context-pop))
+    (gimp-image-delete image)))
 "@
         $log = Join-Path $outputDirectory "$baseName.gimp.log"
         $errorLog = Join-Path $outputDirectory "$baseName.gimp.stderr.log"

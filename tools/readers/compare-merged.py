@@ -30,6 +30,8 @@ def main():
         max_delta = 0
         first = None
         for offset in range(0, len(stored), 4):
+            if stored[offset + 3] == 0 and png[offset + 3] == 0:
+                continue
             delta = max(abs(stored[offset + c] - png[offset + c]) for c in range(4))
             max_delta = max(max_delta, delta)
             if delta > 1:

@@ -27,8 +27,9 @@ Krita 5.3.4 batch PNG exports disagree with Photoshop on two writer fixtures:
 `softpsd-clip.psd` paints blue outside the clipping bounds (768 pixels), and
 `softpsd-mask-white.psd` leaves the 256-pixel hole transparent despite the disabled
 mask on the covering layer. Photoshop renders both as the stored merged image.
-Other Krita fixture differences are RGB values at alpha zero, with visible pixels matching.
-The composite gate records these differences without failing.
+Other Krita fixture differences are RGB values at alpha zero, with visible pixels matching;
+the comparison ignores RGB when both alphas are zero. The two visible differences above
+remain informational in the composite gate.
 
 Corpus refusal kept on purpose: `psd-tools/tests/psd_files/blend-modes/group-divider-blend-mode.psd`
 declares a raw 100 × 100 × 4 composite and holds 1,606 bytes of it. Photoshop opens it because it

@@ -68,7 +68,9 @@ tools\composite-gate.ps1 tests\fixtures\softpsd-smoke.psd
 
 The gate finds Krita and GIMP 3 in PATH or Program Files on local fixed drives; optional
 `-Krita` and `-Gimp` executable paths override discovery. Krita uses its batch exporter;
-GIMP uses a fresh console process and Script-Fu to load, flatten over white, and export PNG.
+GIMP uses a fresh console process and Script-Fu to merge visible layers clipped to the
+image and export PNG with alpha preserved. Pixels fully transparent on both sides compare
+equal regardless of RGB.
 PNG files and GIMP logs go under `target/composites/`. Pixel differences report count,
 first coordinate and largest channel difference and are informational. Export failures,
 missing PNGs and comparison errors fail the gate. Missing engines are explicitly skipped.
