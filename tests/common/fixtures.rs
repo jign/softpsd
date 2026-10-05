@@ -9,12 +9,14 @@ pub struct Fixture {
 pub fn names() -> &'static [&'static str] {
     &[
         "smoke", "alpha", "hidden", "clip", "nested", "empty", "name", "blends", "icc", "psb",
+        "flat",
     ]
 }
 
 pub fn fixture(name: &str) -> Fixture {
     match name {
         "smoke" => smoke(),
+        "flat" => flat(),
         "psb" => psb(),
         "icc" => icc(),
         "blends" => blends(),
@@ -659,5 +661,30 @@ fn psb() -> Fixture {
             pixels: solid(rect(0, 0, 0, 0), [0, 0, 0, 0]),
         }),
     );
+    Fixture { ours, photoshop }
+}
+
+fn flat() -> Fixture {
+    let mut pixels = solid(rect(0, 0, 32, 32), [255, 255, 255, 255]);
+    fill(&mut pixels, rect(8, 8, 24, 24), [255, 0, 0, 255]);
+    let ours = Document {
+        width: 32,
+        height: 32,
+        channels: Channels::Rgb,
+        icc_profile: None,
+        resolution_dpi: Some(72.0),
+        merged: pixels.clone(),
+        layers: vec![Node::Layer(Layer {
+            name: "Background".into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels,
+            mask: None,
+        })],
+    };
+    let mut photoshop = ours.clone();
+    photoshop.icc_profile = Some(photoshop_profile("flat"));
     Fixture { ours, photoshop }
 }
