@@ -10,7 +10,9 @@ resource 1039. Merged RGB is blended over white: the layer's `200, 30, 30` at al
 stored as `222, 120, 120, 153`. psd-tools `topil()` undoes it; a writer that stores straight
 RGB gets `163, 0, 0` back from it.
 
-A transparent-background document gets an empty `Layer 1` at bounds 0,0,0,0.
+A transparent-background document gets an empty `Layer 1` at bounds 0,0,0,0, below the
+group at the root. A new group is PassThrough and open (`lsct` kind 1); its record's blend
+key is `pass` too. Resolution resource 1005 is 72 ppi. The mask block is 20 bytes, flags 0.
 
 Channel ids: -1 alpha, 0 1 2 RGB, -2 user mask. Every layer, including groups and the closing
 `</Layer group>` record, carries all four colour channels (2 bytes each when empty).

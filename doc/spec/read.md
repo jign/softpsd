@@ -18,8 +18,9 @@ pub fn read_header(input: &[u8]) -> Result<Header>;   // cheap: format, size, de
   layer mask info, document-level tagged blocks. Skipping is by stored length, never by
   assumed size.
 - Layers that are neither pixel nor group (`lsct` kind 0, or a layer carrying an
-  adjustment, fill, text or smart object key) are refused by name, so an artist learns
-  which layer stopped the import.
+  adjustment, fill, text, smart object or vector mask key) are refused as
+  `Error::UnsupportedLayer { name, reason }`, so an artist learns which layer stopped the
+  import. Layer effects are skipped, not refused.
 - Layer pixels are interleaved to RGBA straight alpha at the layer's rect. A layer with no
   -1 channel gets alpha 255. Rgb documents give alpha 255 in the merged image.
 - The merged RGB of an Rgba document is stored over white; the reader undoes it:
