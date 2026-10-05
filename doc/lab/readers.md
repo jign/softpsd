@@ -18,3 +18,7 @@ Known disagreements, Photoshop is the tiebreak:
 - PhotoshopAPI output lacks the merged image; third-party readers then fail. We always write it.
 
 `tools/readers/` dumps a file through each reader for comparison.
+
+psd-tools applies its 30,000 px PSD side limit to version 2 files as well, so a 30,001 px PSB
+fails to decode. `tools/readers/psd_limits.py` raises the limit to 300,000 for version 2 while
+our gate tools decode.

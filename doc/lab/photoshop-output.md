@@ -10,6 +10,9 @@ resource 1039. Merged RGB is blended over white: the layer's `200, 30, 30` at al
 stored as `222, 120, 120, 153`. psd-tools `topil()` undoes it; a writer that stores straight
 RGB gets `163, 0, 0` back from it.
 
+A document that is a lone Background layer saves with a layer info length of 0: no layer
+records at all, the merged image is the layer. Photoshop shows `Background` on reopening it.
+
 A transparent-background document gets an empty `Layer 1` at bounds 0,0,0,0, below the
 group at the root. A new group is PassThrough and open (`lsct` kind 1). Its record's blend
 key is `norm`; the `pass` is only inside `lsct` (`00 00 00 10 | 00 00 00 01 8BIM pass 00 00 00 00`,

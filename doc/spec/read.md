@@ -27,7 +27,10 @@ pub fn read_header(input: &[u8]) -> Result<Header>;   // cheap: format, size, de
   `c = (stored - 255 + a) * 255 / a` for `a > 0`, rounded, and 0 for `a == 0`.
 - Group nesting is rebuilt from `lsct` kinds; an unbalanced file is `Error::Malformed`. A
   group's blend is the key inside `lsct`; the record's key is used only for layers.
-- A layer and mask section, or a layer info, of length 0 means no layers.
+- A layer and mask section, or a layer info, of length 0 is a flattened file: Photoshop
+  writes one when the document is a lone Background, and shows a `Background` layer on
+  opening it. The reader does the same: one layer `Background`, Normal, opacity 255,
+  visible, rect the canvas, pixels the merged image with alpha 255, `Channels::Rgb`.
 - Bounded. Every length is checked against the remaining input before it is used; the
   decoder allocates from the header's dimensions, never from a length field alone. RLE
   decode stops at the row's byte count and the row's width, whichever comes first, and a

@@ -85,6 +85,11 @@ Gate: `tools\gate-fixtures.ps1 alpha hidden clip nested empty name blends` passe
 
 ## Chunk 3: writer features
 
+Finding from the first pass, now in read.md: a flattened Photoshop file has no layer
+records, and Photoshop shows a `Background` layer for it. The reader synthesises that layer
+from the merged image. The reader change is authorised; flat is gated again after it, with
+its `photoshop` expectation being `ours` plus the profile and 72 ppi.
+
 Lift the phase 1 refusals in `validate.rs` and `write.rs`, one commit each, then three
 fixtures.
 
