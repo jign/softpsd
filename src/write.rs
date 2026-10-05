@@ -282,7 +282,11 @@ fn encode_record(record: &Record<'_>, channels: &[Channel], id: u32) -> Result<V
             tagged(&mut extra, b"lsct", &divider)?;
         }
         Record::GroupEnd => tagged(&mut extra, b"lsct", &3u32.to_be_bytes())?,
-        Record::Layer(_) => {}
+        Record::Layer(_) => {
+            tagged(&mut extra, b"clbl", &[1, 0, 0, 0])?;
+            tagged(&mut extra, b"infx", &[0; 4])?;
+            tagged(&mut extra, b"knko", &[0; 4])?;
+        }
     }
 
     let mut bytes = Vec::new();
