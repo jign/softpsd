@@ -122,7 +122,8 @@ zero:
 - `White`: default 255, so the layer shows everywhere except the hole.
 - `Disabled`: default 0, `disabled: true`, so the whole layer shows.
 - `Inverted`: default 0, `inverted: true`. The model says the hole is inverted and the layer
-  shows only inside 8,8,24,24.
+  shows only inside 8,8,24,24. Answered: Photoshop shows it at full, so `inverted` is
+  struck from the model and this layer from the fixture.
 
 Photoshop script: `White` through Hide Selection (`Mk` with `Usng` = `HdSl`), `Disabled`
 through `setd` of `userMaskEnabled` false on the layer. Photoshop cannot make an inverted
@@ -133,7 +134,15 @@ The question: does Photoshop honour mask flag bit 2 when it opens our file? The 
 comparison answers it. If the PNG shows the `Inverted` layer at full, Photoshop ignores the
 flag, and the finding is "strike `inverted` from the model". Report, do not change the model.
 
-Gate: `tools\gate-fixtures.ps1 mask-white`, with the inverted result stated either way.
+Second finding: Photoshop's scripting has no stored mask rect. Loading the mask as a
+selection gives the selected area, which is the canvas minus the hole for `White` and
+nothing for an all-black mask. Both dumps now print `mask=on` or `mask=off` (the enabled
+state) in place of the rect; the rect is checked by the two library dumps and the round trip.
+Photoshop also trims an all-default mask to an empty rect on save, so the `photoshop`
+expectation for `Disabled` has rect 0,0,0,0 and no data.
+
+Gate: `tools\gate-fixtures.ps1 mask-white` with the two-layer fixture, then the full
+phase gate.
 
 ## Phase gate
 

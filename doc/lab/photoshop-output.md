@@ -10,6 +10,10 @@ resource 1039. Merged RGB is blended over white: the layer's `200, 30, 30` at al
 stored as `222, 120, 120, 153`. psd-tools `topil()` undoes it; a writer that stores straight
 RGB gets `163, 0, 0` back from it.
 
+Mask flag bit 2 ("invert") is ignored on open: a mask of all 0 with the bit set hides
+nothing. A mask whose pixels are all the default colour is saved with rect 0,0,0,0 and no
+data, flags kept.
+
 A document that is a lone Background layer saves with a layer info length of 0: no layer
 records at all, the merged image is the layer. Photoshop shows `Background` on reopening it.
 

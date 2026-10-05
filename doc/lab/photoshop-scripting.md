@@ -25,6 +25,9 @@ Rules inside the script:
   descriptor; export the PNG before selecting anything.
 - Strings returned to PowerShell are Unicode, but a child process's stdout is decoded with
   `[Console]::OutputEncoding`, cp1252 by default. Gate scripts set it to UTF-8 themselves.
+- Scripting cannot give a mask's stored rect. Loading the mask channel as a selection gives
+  the bounds of the selected area, which depends on the mask's content, not its rect. Hide
+  Selection is `Usng` = `HdSl`; the enabled state is the `userMaskEnabled` descriptor key.
 - A raster mask from the selection needs Action Manager:
   `Mk` with `Nw`=`Chnl`, `At`=mask channel, `Usng`=`UsrM`/`RvlS`. See `tools/photoshop/fixtures/smoke.jsx`.
 

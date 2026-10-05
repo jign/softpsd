@@ -54,7 +54,6 @@ pub struct Mask {
     pub data: Vec<u8>,         // one byte per pixel, 255 = shown
     pub default: u8,           // value outside rect, 0 or 255
     pub disabled: bool,
-    pub inverted: bool,
 }
 
 pub enum Blend { PassThrough, Normal, Dissolve, Darken, Multiply, ColorBurn, LinearBurn,
@@ -129,8 +128,8 @@ Length (4 bytes PSD, 8 PSB), then:
 Extra data:
 
 - **Mask data.** 4-byte length. 0 when no mask. Otherwise 20: rect (4 × i32), default
-  colour u8, flags u8 (bit 0 position relative to layer, bit 1 disabled, bit 2 inverted,
-  bit 4 parameters follow), 2 bytes zero. Photoshop may write 36 or more (a second "real
+  colour u8, flags u8 (bit 0 position relative to layer, bit 1 disabled, bit 2 "invert",
+  which Photoshop ignores, bit 4 parameters follow), 2 bytes zero. Photoshop may write 36 or more (a second "real
   user mask" rect, or parameters); the reader accepts those by length and ignores them.
 - **Blending ranges.** 4-byte length, then 8 bytes grey range and 8 per channel. We write
   length 40 with every range `00 00 FF FF 00 00 FF FF` for 4 channels. The reader skips.

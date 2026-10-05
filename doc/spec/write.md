@@ -21,8 +21,9 @@ pub fn format_for(width: u32, height: u32) -> Format;   // Psb above 30,000 on e
   no data).
 - Layer pixels are written at the layer's rect, not padded to the document. Nothing is
   trimmed either; the caller decides the rect.
-- Masks: default colour is written as given; the flags carry disabled and inverted; "position
-  relative to layer" is never set, mask rects are in document space.
+- Masks: default colour is written as given; the flags carry disabled only; "position
+  relative to layer" is never set, mask rects are in document space. A mask whose data is
+  all the default colour may be written with an empty rect, as Photoshop does.
 - Names: the Pascal name is the UTF-16 name transcoded to MacRoman with `?` for anything
   outside, cut to 31 bytes. `luni` has the full name.
 - Blending ranges are the no-op ranges. Flags set bit 3 always, bit 1 for hidden, bit 4 on

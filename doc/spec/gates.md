@@ -17,7 +17,7 @@ model. Both live in `tests/fixtures/` and are small.
 | hidden | a hidden layer and a hidden group |
 | clip | a layer clipped to the one below |
 | nested | groups three deep, open and closed |
-| mask-white | a mask with white default and an inverted one and a disabled one |
+| mask-white | a mask with white default and a disabled one |
 | empty | a layer with no pixels, rect 0,0,0,0 |
 | name | a 200-character name with non-Latin characters |
 | icc | an embedded profile other than sRGB |
