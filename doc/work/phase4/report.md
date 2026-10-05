@@ -2,72 +2,81 @@
 
 ## Chunk 1: third reader
 
-`photoshopapi-dump.py` reads through `LayeredFile_8bit.read` and prints name, nesting,
-blend, byte opacity, visibility, clipping, pixel rect, mask rect/default and disabled state.
-It converts center/dimensions to rects and visits bottom first, matching the existing
-dumps. UTF-8 output preserves the Unicode name fixture. Installed packages remain under
-gitignored `tools/`; no crate dependency or reader/writer change was needed.
-
-The writer gate runs PhotoshopAPI after ag-psd and before Photoshop. `gates.md` now
-states the actual split: round trips run through the Cargo fixture loops; library and
-Photoshop gates run through `gate-fixtures.ps1`. The tools README and third-party table
-include the new dump.
-
-The full fixture gate passes all twelve pairs with three library dumps per writer file.
-Field-by-field checks against psd-tools and ag-psd agree on all twelve writer trees:
-order, nesting, names, blends, opacity, visibility, clipping, pixel rects and mask
-rects/defaults/disabled state. Group pixel bounds are omitted from tree comparisons.
-No new third-party disagreement was found; `doc/lab/readers.md` needs no finding added.
-Merged and layer pixel comparisons report zero differences throughout.
-
-A temporary PhotoshopAPI exit 7 stops the writer gate before Photoshop and propagates
-exit 7. A missing-file invocation exits nonzero. Formatting, seven Rust tests and
-Clippy with warnings denied pass. Gate output is preserved in
-`target/phase4-chunk1-gate.txt`.
+PhotoshopAPI's dump reports nesting, names, blend, opacity, visibility, clipping, rects
+and mask rect/default/disabled state; the writer gate runs it after ag-psd. UTF-8 preserves
+the name fixture. All twelve trees agree field by field with psd-tools and ag-psd, with
+group pixel bounds omitted. No library finding. All fixture/pixel gates and seven tests
+pass. Injected exit 7 stops before Photoshop; missing input fails. `gates.md` now assigns
+round trips to Cargo and external checks to `gate-fixtures.ps1`.
 
 ## Chunk 2: corpus and triage
 
-The fetcher shallow/sparse clones ag-psd `test/` and psd-tools `tests/psd_files/` into
-ignored `corpus/`; rerunning pulls successfully with unchanged counts. Revisions:
-ag-psd `387049670cb8`, psd-tools `d68bf46c7140`. Counts: 163 PSD / 10 PSB from ag-psd,
-278 PSD / 37 PSB from psd-tools, **488 files** total. No file exceeds 64 MB.
+Shallow sparse clones: ag-psd `387049670cb8` (`test/`), psd-tools `d68bf46c7140`
+(`tests/psd_files/`). Idempotent rerun pulls unchanged. Counts: ag-psd 163 PSD / 10 PSB;
+psd-tools 278 PSD / 37 PSB; **488 total**, none above 64 MB.
 
-The dependency-free `corpus` feature adds one test: catch each reader panic, classify
-results in `target/corpus.txt`, require files and no panics. The Python comparator builds
-`examples/dump.rs` once and records normalized trees / first differences. Photoshop
-triage opens malformed files, counts root layers, closes without saving and records results.
-
-| Final class | Files |
+| Reader class | Files |
 | --- | ---: |
-| Read successfully | 124 |
+| Successful | 124 |
 | Unsupported | 83 |
 | Unsupported layer | 280 |
 | Malformed | 1 |
 | Panic / skipped size | 0 / 0 |
 
-The comparator completes: **124 match, 0 differs, 364 refused, 0 psd-tools failed**.
-There are no differing lines to inspect. The initial pass had 118 reads and seven malformed
-files; Photoshop opened all seven. Three reading-rule fixes, committed separately:
+Comparator: **124 match, 0 differs, 364 refused, 0 psd-tools failed**; no differing lines
+to triage. Initially seven malformed files all opened in Photoshop. Separate reading fixes:
 
-- Omitted global mask header: `psd-tools/tests/psd_files/1layer.psd`, `2layers.psd`,
+- Optional global mask header: `psd-tools/tests/psd_files/1layer.psd`, `2layers.psd`,
   `transparentbg-gimp.psd`, and `ag-psd/test/read/sai/src.psd` now read.
-- `ag-psd/test/read/nested/src.psd`: treat `lsdk` as a section divider like `lsct`.
+- `ag-psd/test/read/nested/src.psd`: read `lsdk` section dividers.
 - `ag-psd/test/read/rle-fail/src.psd`: allow trailing PackBits no-op padding. RGB row
-  164 produces all 1,600 pixels at byte 31, then ends with `80`; row count is 32.
-  Ordinary encoded data after the completed row remains an error.
+  164 completes 1,600 pixels at byte 31, then `80`; stored count 32.
 
 **Finding:** `psd-tools/tests/psd_files/blend-modes/group-divider-blend-mode.psd`
-opens in Photoshop but declares raw merged data for 100 × 100 × 4 (40,000 bytes), with
-only 1,606 bytes present. psd-tools' `topil()` also fails with decompressed length
-mismatch. After accepting its omitted global mask header, we still return
-`Malformed("truncated")` for the composite. Recovering pixels from layers would exceed
-the permitted reading-rule changes; model/writer are unchanged. Final Photoshop triage
-again confirms it opens. No new disagreement with psd-tools needs a lab entry.
+opens in Photoshop but has only 1,606 bytes for a declared raw 100 × 100 × 4 composite
+(40,000 bytes). psd-tools also rejects that image data. We retain `Malformed("truncated")`;
+recovering a composite exceeds the allowed parsing fixes. No model/writer change.
 
-A temporary injected reader panic is caught, listed and fails the corpus test; a
-probe above 64 MB is skipped by size. Both probes were removed before the final run.
-`cargo test --features corpus` passes the corpus test and seven fixture tests;
-formatting and Clippy with warnings denied pass. All twelve fixture pairs pass their
-full gates after the fixes. Detailed outputs: `target/corpus.txt`, `corpus-check.txt`,
-`corpus-triage.txt`; initial triage is preserved in `target/phase4-corpus-triage-initial.txt`.
+The dependency-free corpus feature catches each reader panic and reports status per file.
+An injected panic fails its test; a probe above 64 MB is skipped. Both were removed.
+Corpus test, seven fixture tests, formatting, Clippy and all twelve gates pass. Details:
+`target/corpus.txt`, `corpus-check.txt`, `corpus-triage.txt`; initial Photoshop triage is
+preserved in `target/phase4-corpus-triage-initial.txt`.
 
+## Chunk 3: composites and release command
+
+`tools/gate-all.ps1` passes end to end, including a fresh `powershell -NoProfile` run:
+setup check, fmt, Clippy, tests, twelve fixture gates, corpus test, then both engines
+on every writer fixture. Discovery finds the supplied E: installs automatically.
+Krita **5.3.4** and GIMP **3.2.6** both run; neither is skipped. GIMP uses a fresh hidden
+console process, Script-Fu v3, and flattening over white. Separate logs avoid legacy
+PowerShell treating native warning output as a failure. Krita exports in a hidden process.
+
+Values below are **differing pixels / maximum 8-bit channel difference**, tolerance 1:
+
+| Fixture | Krita | GIMP |
+| --- | ---: | ---: |
+| smoke | 3520 / 255 | 4096 / 255 |
+| flat | 0 / 0 | 0 / 0 |
+| alpha | 960 / 255 | 960 / 255 |
+| blends | 997 / 255 | 997 / 255 |
+| hidden | 768 / 255 | 768 / 255 |
+| clip | 768 / 255 | 768 / 255 |
+| nested | 960 / 255 | 960 / 255 |
+| mask-white | 256 / 255 | 0 / 0 |
+| empty | 960 / 255 | 960 / 255 |
+| name | 960 / 255 | 960 / 255 |
+| icc | 960 / 255 | 960 / 255 |
+| psb | 0 / 0 | 0 / 0 |
+
+Krita's clip paints blue outside clipping bounds; mask-white leaves a transparent hole.
+These visible disagreements are recorded in `doc/lab/readers.md`. Its other differences
+are only RGB at alpha zero; visible pixels agree. GIMP's transparent-fixture differences
+come from the requested flattening removing alpha, including smoke's partial alpha.
+Pixel mismatches stay informational; the comparison rule is unchanged.
+
+Missing-engine simulation skips explicitly; missing setup stops with the install command.
+Injected exit 7 stops at the named step. A changed pixel returns status 1; missing PNG
+returns 2 and fails. Export failures/missing output/timeouts also fail. Logs and PNGs:
+`target/phase4-gate-all-final.txt`, `target/composites/`. Phase 4's gate is complete;
+the truncated-composite finding remains for review.
