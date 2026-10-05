@@ -12,6 +12,7 @@ pub mod validate;
 pub mod write;
 
 pub use model::{Blend, Channels, Document, Group, Image, Layer, Mask, Node, Rect};
+pub use read::{Header, read, read_header};
 pub use write::{format_for, write};
 
 /// File format: PSD, or PSB above 30,000 px on either side.
@@ -27,6 +28,7 @@ pub enum Format {
 pub enum Error {
     Io(std::io::Error),
     Unsupported(&'static str),
+    UnsupportedLayer { name: String, reason: &'static str },
     Malformed(&'static str),
 }
 
@@ -41,6 +43,9 @@ impl std::fmt::Display for Error {
         match self {
             Error::Io(e) => write!(f, "io: {e}"),
             Error::Unsupported(s) => write!(f, "unsupported: {s}"),
+            Error::UnsupportedLayer { name, reason } => {
+                write!(f, "unsupported layer '{name}': {reason}")
+            }
             Error::Malformed(s) => write!(f, "malformed: {s}"),
         }
     }
