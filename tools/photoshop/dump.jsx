@@ -96,11 +96,7 @@
             }
         }
         doc = app.open(input);
-        var opts = new ExportOptionsSaveForWeb();
-        opts.format = SaveDocumentType.PNG;
-        opts.PNG8 = false;
-        opts.transparency = true;
-        doc.exportDocument(new File(OUT + ".png"), ExportType.SAVEFORWEB, opts);
+        doc.saveAs(new File(OUT + ".png"), new PNGSaveOptions(), true, Extension.LOWERCASE);
         var lines = [];
         walk(doc.layers, "", lines);
         return lines.join("\n");

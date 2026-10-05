@@ -16,7 +16,7 @@ def main():
     try:
         psd = PSDImage.open(args.psd)
         with pixel_limits(psd):
-            merged = psd.topil()
+            merged = psd.topil(apply_icc=False)
         if merged is None:
             raise ValueError("PSD has no stored merged image")
         merged = merged.convert("RGBA")
@@ -44,3 +44,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
