@@ -32,10 +32,11 @@ to triage. Initially seven malformed files all opened in Photoshop. Separate rea
 - `ag-psd/test/read/rle-fail/src.psd`: allow trailing PackBits no-op padding. RGB row
   164 completes 1,600 pixels at byte 31, then `80`; stored count 32.
 
-**Finding:** `psd-tools/tests/psd_files/blend-modes/group-divider-blend-mode.psd`
+**Intentional refusal (reviewer ruled):** `psd-tools/tests/psd_files/blend-modes/group-divider-blend-mode.psd`
 opens in Photoshop but has only 1,606 bytes for a declared raw 100 × 100 × 4 composite
 (40,000 bytes). psd-tools also rejects that image data. We retain `Malformed("truncated")`;
-recovering a composite exceeds the allowed parsing fixes. No model/writer change.
+Photoshop recomposites from the layers. The merged image is part of our model and we
+do not composite, so recovery is outside the reader's scope. No model/writer change.
 
 The dependency-free corpus feature catches each reader panic and reports status per file.
 An injected panic fails its test; a probe above 64 MB is skipped. Both were removed.
@@ -49,34 +50,39 @@ preserved in `target/phase4-corpus-triage-initial.txt`.
 setup check, fmt, Clippy, tests, twelve fixture gates, corpus test, then both engines
 on every writer fixture. Discovery finds the supplied E: installs automatically.
 Krita **5.3.4** and GIMP **3.2.6** both run; neither is skipped. GIMP uses a fresh hidden
-console process, Script-Fu v3, and flattening over white. Separate logs avoid legacy
+console process and Script-Fu v3 to merge visible layers clipped to the image, select
+the merged layer, and export with alpha preserved. Separate logs avoid legacy
 PowerShell treating native warning output as a failure. Krita exports in a hidden process.
 
-Values below are **differing pixels / maximum 8-bit channel difference**, tolerance 1:
+After the review fixes, all twelve composite gates were rerun in fresh
+`powershell -NoProfile` processes. Values below are **differing pixels / maximum
+8-bit channel difference**, tolerance 1. When both alphas are zero, RGB is ignored:
 
 | Fixture | Krita | GIMP |
 | --- | ---: | ---: |
-| smoke | 3520 / 255 | 4096 / 255 |
+| smoke | 0 / 0 | 0 / 0 |
 | flat | 0 / 0 | 0 / 0 |
-| alpha | 960 / 255 | 960 / 255 |
-| blends | 997 / 255 | 997 / 255 |
-| hidden | 768 / 255 | 768 / 255 |
-| clip | 768 / 255 | 768 / 255 |
-| nested | 960 / 255 | 960 / 255 |
+| alpha | 0 / 0 | 0 / 0 |
+| blends | 0 / 0 | 0 / 0 |
+| hidden | 0 / 0 | 0 / 0 |
+| clip | 768 / 255 | 0 / 0 |
+| nested | 0 / 0 | 0 / 0 |
 | mask-white | 256 / 255 | 0 / 0 |
-| empty | 960 / 255 | 960 / 255 |
-| name | 960 / 255 | 960 / 255 |
-| icc | 960 / 255 | 960 / 255 |
+| empty | 0 / 0 | 0 / 0 |
+| name | 0 / 0 | 0 / 0 |
+| icc | 0 / 1 | 0 / 0 |
 | psb | 0 / 0 | 0 / 0 |
 
 Krita's clip paints blue outside clipping bounds; mask-white leaves a transparent hole.
-These visible disagreements are recorded in `doc/lab/readers.md`. Its other differences
-are only RGB at alpha zero; visible pixels agree. GIMP's transparent-fixture differences
-come from the requested flattening removing alpha, including smoke's partial alpha.
-Pixel mismatches stay informational; the comparison rule is unchanged.
+These visible disagreements are recorded in `doc/lab/readers.md`. Other transparent
+RGB differences now compare equal. GIMP matches every fixture with alpha preserved.
+Pixel mismatches stay informational.
 
 Missing-engine simulation skips explicitly; missing setup stops with the install command.
 Injected exit 7 stops at the named step. A changed pixel returns status 1; missing PNG
-returns 2 and fails. Export failures/missing output/timeouts also fail. Logs and PNGs:
-`target/phase4-gate-all-final.txt`, `target/composites/`. Phase 4's gate is complete;
-the truncated-composite finding remains for review.
+returns 2 and fails. A targeted check confirms transparent RGB changes pass while
+an alpha mismatch still fails. The smoke writer gate also passes all readers and
+Photoshop under the new rule: zero differing pixels, maximum difference 0.
+Export failures/missing output/timeouts also fail. Logs and PNGs:
+`target/phase4-gate-all-final.txt`, `target/phase4-composite-final.txt`,
+`target/phase4-smoke-final.txt`, `target/composites/`. Phase 4 is closed.
