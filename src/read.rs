@@ -1,13 +1,12 @@
 //! PSD/PSB reader. Accepts the subset the writer emits.
 
-use crate::{Document, Error, Format, Result};
+use crate::{Blend, Channels, Document, Error, Format, Mask, Rect, Result};
 
 struct Cursor<'a> {
     data: &'a [u8],
     pos: usize,
 }
 
-#[allow(dead_code)]
 impl<'a> Cursor<'a> {
     fn new(data: &'a [u8]) -> Self {
         Self { data, pos: 0 }
@@ -155,6 +154,239 @@ fn read_resources(cursor: &mut Cursor<'_>) -> Result<Resources> {
     Ok(resources)
 }
 
+#[allow(dead_code)]
+struct RawLayer {
+    rect: Rect,
+    channels: Vec<(i16, u64)>,
+    blend: Blend,
+    opacity: u8,
+    clipped: bool,
+    visible: bool,
+    mask: Option<Mask>,
+    name: String,
+    section: u32,
+}
+
+#[allow(dead_code)]
+struct LayerRecords<'a> {
+    channels: Channels,
+    records: Vec<RawLayer>,
+    info: Cursor<'a>,
+    section: Cursor<'a>,
+}
+
+fn read_layer_records<'a>(cursor: &mut Cursor<'a>, header: Header) -> Result<LayerRecords<'a>> {
+    let length = cursor.len(header.format)?;
+    let mut section = Cursor::new(cursor.take(length)?);
+    let length = section.len(header.format)?;
+    let mut info = Cursor::new(section.take(length)?);
+    let count = info.i16()?;
+    let channels = if count < 0 {
+        if header.channel_count < 4 {
+            return Err(Error::Malformed("layer count"));
+        }
+        Channels::Rgba
+    } else {
+        Channels::Rgb
+    };
+    let count = usize::from(count.unsigned_abs());
+    if count > info.remaining() / 34 {
+        return Err(Error::Malformed("truncated"));
+    }
+    let mut records = Vec::new();
+    records
+        .try_reserve_exact(count)
+        .map_err(|_| Error::Malformed("layer record"))?;
+    for _ in 0..count {
+        records.push(read_record(&mut info, header.format)?);
+    }
+    Ok(LayerRecords {
+        channels,
+        records,
+        info,
+        section,
+    })
+}
+
+fn read_rect(cursor: &mut Cursor<'_>) -> Result<Rect> {
+    Ok(Rect {
+        top: cursor.i32()?,
+        left: cursor.i32()?,
+        bottom: cursor.i32()?,
+        right: cursor.i32()?,
+    })
+}
+
+fn read_mask(cursor: &mut Cursor<'_>) -> Result<Option<Mask>> {
+    let length = cursor.u32()?;
+    if length == 0 {
+        return Ok(None);
+    }
+    if length < 20 {
+        return Err(Error::Malformed("mask block"));
+    }
+    let mut data = Cursor::new(cursor.take(u64::from(length))?);
+    let rect = read_rect(&mut data)?;
+    let default = data.u8()?;
+    if !matches!(default, 0 | 255) {
+        return Err(Error::Malformed("mask block"));
+    }
+    let flags = data.u8()?;
+    Ok(Some(Mask {
+        rect,
+        data: Vec::new(),
+        default,
+        disabled: flags & 0x02 != 0,
+        inverted: flags & 0x04 != 0,
+    }))
+}
+
+fn read_pascal_name(cursor: &mut Cursor<'_>) -> Result<String> {
+    let length = u64::from(cursor.u8()?);
+    let bytes = cursor.take(length)?;
+    cursor.skip((4 - (length + 1) % 4) % 4)?;
+    let mut name = String::new();
+    name.try_reserve_exact(bytes.len())
+        .map_err(|_| Error::Malformed("layer name"))?;
+    for &byte in bytes {
+        name.push(if byte.is_ascii() {
+            char::from(byte)
+        } else {
+            '?'
+        });
+    }
+    Ok(name)
+}
+
+fn read_unicode_name(data: &[u8]) -> Result<String> {
+    let mut cursor = Cursor::new(data);
+    let count = u64::from(cursor.u32()?);
+    let bytes = cursor.take(count * 2)?;
+    let capacity = (bytes.len() / 2)
+        .checked_mul(3)
+        .ok_or(Error::Malformed("layer name"))?;
+    let mut name = String::new();
+    name.try_reserve_exact(capacity)
+        .map_err(|_| Error::Malformed("layer name"))?;
+    let units = bytes
+        .chunks_exact(2)
+        .map(|pair| u16::from_be_bytes([pair[0], pair[1]]));
+    for ch in char::decode_utf16(units) {
+        name.push(ch.map_err(|_| Error::Malformed("layer name"))?);
+    }
+    Ok(name)
+}
+
+fn tag_length(cursor: &mut Cursor<'_>, format: Format, key: &[u8; 4]) -> Result<u64> {
+    if format == Format::Psb
+        && matches!(
+            key,
+            b"LMsk"
+                | b"Lr16"
+                | b"Lr32"
+                | b"Layr"
+                | b"Mt16"
+                | b"Mt32"
+                | b"Mtrn"
+                | b"Alph"
+                | b"FMsk"
+                | b"lnk2"
+                | b"FEid"
+                | b"FXid"
+                | b"PxSD"
+                | b"cinf"
+        )
+    {
+        cursor.u64()
+    } else {
+        cursor.u32().map(u64::from)
+    }
+}
+
+fn refused_layer(key: &[u8; 4]) -> Option<&'static str> {
+    match key {
+        b"SoCo" | b"GdFl" | b"PtFl" | b"brit" | b"levl" | b"curv" | b"expA" | b"vibA" | b"hue2"
+        | b"blnc" | b"blwh" | b"phfl" | b"mixr" | b"clrL" | b"nvrt" | b"post" | b"thrs"
+        | b"selc" | b"grdm" => Some("adjustment or fill layer"),
+        b"TySh" | b"tySh" => Some("text layer"),
+        b"SoLd" | b"SoLE" | b"PlLd" => Some("smart object"),
+        b"vmsk" | b"vsms" | b"vstk" | b"vogk" => Some("vector mask or shape"),
+        _ => None,
+    }
+}
+
+fn read_record(cursor: &mut Cursor<'_>, format: Format) -> Result<RawLayer> {
+    let rect = read_rect(cursor)?;
+    let count = usize::from(cursor.u16()?);
+    let pair_size = if format == Format::Psd { 6 } else { 10 };
+    if count > cursor.remaining() / pair_size {
+        return Err(Error::Malformed("truncated"));
+    }
+    let mut channels = Vec::new();
+    channels
+        .try_reserve_exact(count)
+        .map_err(|_| Error::Malformed("layer record"))?;
+    for _ in 0..count {
+        let id = cursor.i16()?;
+        if !matches!(id, -3..=2) {
+            return Err(Error::Unsupported("channel id"));
+        }
+        channels.push((id, cursor.len(format)?));
+    }
+    if cursor.take(4)? != b"8BIM" {
+        return Err(Error::Malformed("layer record"));
+    }
+    let blend = Blend::from_key(&cursor.bytes()?).ok_or(Error::Unsupported("blend mode"))?;
+    let opacity = cursor.u8()?;
+    let clipped = cursor.u8()? != 0;
+    let visible = cursor.u8()? & 0x02 == 0;
+    cursor.skip(1)?;
+    let length = u64::from(cursor.u32()?);
+    let mut extra = Cursor::new(cursor.take(length)?);
+    let mask = read_mask(&mut extra)?;
+    let ranges_len = u64::from(extra.u32()?);
+    extra.skip(ranges_len)?;
+    let mut name = read_pascal_name(&mut extra)?;
+    let mut section = 0;
+    let mut refusal = None;
+    while extra.remaining() != 0 {
+        let signature = extra.bytes::<4>()?;
+        if !matches!(&signature, b"8BIM" | b"8B64") {
+            return Err(Error::Malformed("tagged block"));
+        }
+        let key = extra.bytes::<4>()?;
+        let length = tag_length(&mut extra, format, &key)?;
+        let data = extra.take(length)?;
+        match &key {
+            b"luni" => name = read_unicode_name(data)?,
+            b"lsct" => {
+                section = Cursor::new(data).u32()?;
+                if section > 3 {
+                    return Err(Error::Unsupported("section kind"));
+                }
+                if section == 0 {
+                    refusal = refusal.or(Some("unknown section kind"));
+                }
+            }
+            _ => refusal = refusal.or(refused_layer(&key)),
+        }
+    }
+    if let Some(reason) = refusal {
+        return Err(Error::UnsupportedLayer { name, reason });
+    }
+    Ok(RawLayer {
+        rect,
+        channels,
+        blend,
+        opacity,
+        clipped,
+        visible,
+        mask,
+        name,
+        section,
+    })
+}
+
 pub fn read(input: &[u8]) -> Result<Document> {
     let header = read_header(input)?;
     if header.depth != 8 {
@@ -178,5 +410,6 @@ pub fn read(input: &[u8]) -> Result<Document> {
     let colour_len = u64::from(cursor.u32()?);
     cursor.skip(colour_len)?;
     let _resources = read_resources(&mut cursor)?;
+    let _layers = read_layer_records(&mut cursor, header)?;
     Err(Error::Unsupported("not implemented"))
 }
