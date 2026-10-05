@@ -50,12 +50,6 @@ fn record_channels(record: &Record<'_>) -> Result<Vec<Channel>> {
                     data: encode_plane(&plane, layer.pixels.rect)?,
                 });
             }
-            if let Some(mask) = &layer.mask {
-                channels.push(Channel {
-                    id: -2,
-                    data: encode_plane(&mask.data, mask.rect)?,
-                });
-            }
         }
         _ => {
             for id in [-1, 0, 1, 2] {
@@ -65,6 +59,14 @@ fn record_channels(record: &Record<'_>) -> Result<Vec<Channel>> {
                 });
             }
         }
+    }
+    if let Record::Layer(layer) = record
+        && let Some(mask) = &layer.mask
+    {
+        channels.push(Channel {
+            id: -2,
+            data: encode_plane(&mask.data, mask.rect)?,
+        });
     }
     Ok(channels)
 }
