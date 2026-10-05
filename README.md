@@ -4,7 +4,7 @@
 
 Read and write Adobe Photoshop PSD and PSB files in Rust.
 
-Built for [Soft Edge](https://soft-edge-roadmap.pages.dev). Write path first.
+Built for [Soft Edge](https://softedge.pages.dev/). Write path first.
 
 ## Scope
 
