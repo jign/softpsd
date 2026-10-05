@@ -8,14 +8,25 @@ pub struct Fixture {
 
 pub fn names() -> &'static [&'static str] {
     &[
-        "smoke", "alpha", "hidden", "clip", "nested", "empty", "name", "blends", "icc", "psb",
+        "smoke",
+        "alpha",
+        "hidden",
+        "clip",
+        "nested",
+        "empty",
+        "name",
+        "blends",
+        "icc",
+        "psb",
         "flat",
+        "mask-white",
     ]
 }
 
 pub fn fixture(name: &str) -> Fixture {
     match name {
         "smoke" => smoke(),
+        "mask-white" => mask_white(),
         "flat" => flat(),
         "psb" => psb(),
         "icc" => icc(),
@@ -685,5 +696,70 @@ fn flat() -> Fixture {
     };
     let mut photoshop = ours.clone();
     photoshop.icc_profile = Some(photoshop_profile("flat"));
+    Fixture { ours, photoshop }
+}
+
+fn mask_white() -> Fixture {
+    let canvas = rect(0, 0, 32, 32);
+    let hole = rect(8, 8, 24, 24);
+    let ours = Document {
+        width: 32,
+        height: 32,
+        channels: Channels::Rgba,
+        icc_profile: None,
+        resolution_dpi: None,
+        merged: solid(canvas, [255, 0, 0, 255]),
+        layers: vec![
+            Node::Layer(Layer {
+                name: "White".into(),
+                visible: true,
+                opacity: 255,
+                blend: Blend::Normal,
+                clip_to_below: false,
+                pixels: solid(canvas, [255, 0, 0, 255]),
+                mask: Some(Mask {
+                    rect: hole,
+                    data: vec![0; hole.area().unwrap()],
+                    default: 255,
+                    disabled: false,
+                }),
+            }),
+            Node::Layer(Layer {
+                name: "Disabled".into(),
+                visible: true,
+                opacity: 255,
+                blend: Blend::Normal,
+                clip_to_below: false,
+                pixels: solid(canvas, [255, 0, 0, 255]),
+                mask: Some(Mask {
+                    rect: hole,
+                    data: vec![0; hole.area().unwrap()],
+                    default: 0,
+                    disabled: true,
+                }),
+            }),
+        ],
+    };
+    let mut photoshop = ours.clone();
+    photoshop.channels = Channels::Rgb;
+    if let Node::Layer(layer) = &mut photoshop.layers[1] {
+        let mask = layer.mask.as_mut().unwrap();
+        mask.rect = rect(0, 0, 0, 0);
+        mask.data.clear();
+    }
+    photoshop.layers.insert(
+        0,
+        Node::Layer(Layer {
+            name: "Layer 1".into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels: solid(rect(0, 0, 0, 0), [0, 0, 0, 0]),
+            mask: None,
+        }),
+    );
+    photoshop.icc_profile = Some(photoshop_profile("mask-white"));
+    photoshop.resolution_dpi = Some(72.0);
     Fixture { ours, photoshop }
 }
