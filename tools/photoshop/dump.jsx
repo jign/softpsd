@@ -13,16 +13,19 @@
         return result.join(",");
     }
 
-    function maskBounds(layer) {
-        doc.activeLayer = layer;
+    function layerDescriptor(layer) {
         var ref = new ActionReference();
-        ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-        var descriptor = executeActionGet(ref);
+        ref.putIdentifier(charIDToTypeID("Lyr "), layer.id);
+        return executeActionGet(ref);
+    }
+
+    function maskBounds(layer, descriptor) {
         var hasMask = stringIDToTypeID("hasUserMask");
         if (!descriptor.hasKey(hasMask) || !descriptor.getBoolean(hasMask)) {
             return "";
         }
         try {
+            doc.activeLayer = layer;
             var channel = new ActionReference();
             channel.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), charIDToTypeID("Msk "));
             var select = new ActionDescriptor();
@@ -45,11 +48,7 @@
         }
     }
 
-    function layerBounds(layer) {
-        doc.activeLayer = layer;
-        var ref = new ActionReference();
-        ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-        var descriptor = executeActionGet(ref);
+    function layerBounds(layer, descriptor) {
         var key = stringIDToTypeID("boundsNoMask");
         if (!descriptor.hasKey(key)) {
             return bounds(layer.bounds);
@@ -66,13 +65,15 @@
     function walk(layers, indent, lines) {
         for (var i = 0; i < layers.length; i++) {
             var layer = layers[i];
+            var descriptor = layerDescriptor(layer);
             var group = layer.typename == "LayerSet";
             var name = layer.name.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/[\r\n]/g, " ");
             var line = indent + (group ? "group" : "layer") + " '" + name + "'";
             line += " opacity=" + Math.round(layer.opacity * 2.55);
             line += " blend=" + String(layer.blendMode).replace(/^BlendMode\./, "");
-            line += " visible=" + layer.visible + " bounds=" + layerBounds(layer);
-            line += maskBounds(layer);
+            line += " visible=" + descriptor.getBoolean(stringIDToTypeID("visible"));
+            line += " bounds=" + layerBounds(layer, descriptor);
+            line += maskBounds(layer, descriptor);
             lines.push(line);
             if (group) {
                 walk(layer.layers, indent + "  ", lines);
@@ -95,13 +96,13 @@
             }
         }
         doc = app.open(input);
-        var lines = [];
-        walk(doc.layers, "", lines);
         var opts = new ExportOptionsSaveForWeb();
         opts.format = SaveDocumentType.PNG;
         opts.PNG8 = false;
         opts.transparency = true;
         doc.exportDocument(new File(OUT + ".png"), ExportType.SAVEFORWEB, opts);
+        var lines = [];
+        walk(doc.layers, "", lines);
         return lines.join("\n");
     } finally {
         try {
