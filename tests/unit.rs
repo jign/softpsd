@@ -238,3 +238,120 @@ fn write_smoke_parses() {
     assert_eq!(names.len(), 3);
     assert_eq!(names, ["</Layer group>", "Painted", "Group A"]);
 }
+
+#[test]
+fn read_round_trip() {
+    let expected = smoke_document();
+    let mut bytes = Vec::new();
+    softpsd::write(&expected, Format::Psd, &mut bytes).unwrap();
+    assert_eq!(softpsd::read(&bytes).unwrap(), expected);
+    assert_eq!(
+        softpsd::read(include_bytes!("fixtures/softpsd-smoke.psd")).unwrap(),
+        expected,
+    );
+}
+
+fn photoshop_profile(bytes: &[u8]) -> Vec<u8> {
+    let mut file = Walker(bytes);
+    file.take(26);
+    let colour_len = file.u32() as usize;
+    file.take(colour_len);
+    let resources_len = file.u32() as usize;
+    let mut resources = Walker(file.take(resources_len));
+    while !resources.0.is_empty() {
+        resources.take(4);
+        let id = resources.u16();
+        let name_len = usize::from(resources.take(1)[0]);
+        resources.take(name_len + (name_len + 1) % 2);
+        let length = resources.u32() as usize;
+        let data = resources.take(length);
+        resources.take(length % 2);
+        if id == 1039 {
+            let profile: &[u8; 3144] = data.try_into().unwrap();
+            return profile.to_vec();
+        }
+    }
+    panic!("Photoshop fixture has no ICC profile");
+}
+
+#[test]
+fn read_photoshop_smoke() {
+    let bytes = include_bytes!("fixtures/ps27-smoke.psd");
+    let mut expected = smoke_document();
+    let Node::Group(group) = &mut expected.layers[0] else {
+        unreachable!();
+    };
+    group.blend = Blend::PassThrough;
+    expected.layers.insert(
+        0,
+        Node::Layer(Layer {
+            name: String::from("Layer 1"),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels: Image {
+                rect: Rect {
+                    top: 0,
+                    left: 0,
+                    bottom: 0,
+                    right: 0,
+                },
+                data: Vec::new(),
+            },
+            mask: None,
+        }),
+    );
+    expected.icc_profile = Some(photoshop_profile(bytes));
+    expected.resolution_dpi = Some(72.0);
+    assert_eq!(softpsd::read(bytes).unwrap(), expected);
+}
+
+fn smoke_field_positions(bytes: &[u8]) -> (usize, usize) {
+    let mut file = Walker(bytes);
+    file.take(4);
+    file.u16();
+    file.take(6);
+    file.u16();
+    file.u32();
+    file.u32();
+    let depth = bytes.len() - file.0.len();
+    file.u16();
+    file.u16();
+    let colour_len = file.u32() as usize;
+    file.take(colour_len);
+    let resources_len = file.u32() as usize;
+    file.take(resources_len);
+    let layer_mask_len = file.u32() as usize;
+    let mut layer_mask = Walker(file.take(layer_mask_len));
+    let layer_info_len = layer_mask.u32() as usize;
+    let mut layer_info = Walker(layer_mask.take(layer_info_len));
+    layer_info.u16();
+    layer_info.take(16);
+    layer_info.u16();
+    layer_info.u16();
+    let channel_length = layer_info.0.as_ptr() as usize - bytes.as_ptr() as usize;
+    (depth, channel_length)
+}
+
+#[test]
+fn read_refuses() {
+    let mut bytes = Vec::new();
+    softpsd::write(&smoke_document(), Format::Psd, &mut bytes).unwrap();
+    assert!((0..bytes.len()).step_by(7).all(|length| {
+        std::panic::catch_unwind(|| softpsd::read(&bytes[..length]))
+            .is_ok_and(|result| result.is_err())
+    }));
+    let (depth, channel_length) = smoke_field_positions(&bytes);
+    let mut bad_depth = bytes.clone();
+    bad_depth[depth..depth + 2].copy_from_slice(&16u16.to_be_bytes());
+    assert!(matches!(
+        softpsd::read(&bad_depth),
+        Err(softpsd::Error::Unsupported(_)),
+    ));
+    bytes[channel_length..channel_length + 4].copy_from_slice(&u32::MAX.to_be_bytes());
+    assert!(matches!(
+        softpsd::read(&bytes),
+        Err(softpsd::Error::Malformed(_)),
+    ));
+}
