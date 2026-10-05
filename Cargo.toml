@@ -10,6 +10,9 @@ keywords = ["psd", "psb", "photoshop", "image"]
 categories = ["multimedia::images", "parser-implementations", "encoding"]
 publish = false
 
+[features]
+corpus = []
+
 [dependencies]
 
 [dev-dependencies]
