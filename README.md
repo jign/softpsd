@@ -29,6 +29,9 @@ Not in v1: 16 and 32-bit, CMYK, duotone, vector masks, layer effects, smart obje
 Not yet. While the notice at the top is up, pull requests are not taken; the design is still
 moving and a PR would collide with it. Once it comes down: open an issue first.
 
+Issues are welcome now. A file that misbehaves, a reader that disagrees with Photoshop, a
+quirk we have not recorded: file it. With the file attached, better still.
+
 A PR that changes the writer comes with a fixture a real Photoshop opened.
 A reader bug report comes with the file that broke it.
 
