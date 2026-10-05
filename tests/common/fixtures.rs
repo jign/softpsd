@@ -8,13 +8,14 @@ pub struct Fixture {
 
 pub fn names() -> &'static [&'static str] {
     &[
-        "smoke", "alpha", "hidden", "clip", "nested", "empty", "name",
+        "smoke", "alpha", "hidden", "clip", "nested", "empty", "name", "blends",
     ]
 }
 
 pub fn fixture(name: &str) -> Fixture {
     match name {
         "smoke" => smoke(),
+        "blends" => blends(),
         "name" => unicode_name(),
         "empty" => empty(),
         "nested" => nested(),
@@ -501,6 +502,81 @@ fn unicode_name() -> Fixture {
         }),
     );
     photoshop.icc_profile = Some(photoshop_profile("name"));
+    photoshop.resolution_dpi = Some(72.0);
+    Fixture { ours, photoshop }
+}
+
+fn blends() -> Fixture {
+    let blends = [
+        Blend::Normal,
+        Blend::Dissolve,
+        Blend::Darken,
+        Blend::Multiply,
+        Blend::ColorBurn,
+        Blend::LinearBurn,
+        Blend::DarkerColor,
+        Blend::Lighten,
+        Blend::Screen,
+        Blend::ColorDodge,
+        Blend::LinearDodge,
+        Blend::LighterColor,
+        Blend::Overlay,
+        Blend::SoftLight,
+        Blend::HardLight,
+        Blend::VividLight,
+        Blend::LinearLight,
+        Blend::PinLight,
+        Blend::HardMix,
+        Blend::Difference,
+        Blend::Exclusion,
+        Blend::Subtract,
+        Blend::Divide,
+        Blend::Hue,
+        Blend::Saturation,
+        Blend::Color,
+        Blend::Luminosity,
+    ];
+    let layers = blends
+        .into_iter()
+        .enumerate()
+        .map(|(i, blend)| {
+            Node::Layer(Layer {
+                name: format!("{blend:?}"),
+                visible: true,
+                opacity: 255,
+                blend,
+                clip_to_below: false,
+                pixels: solid(rect(0, i as i32, 1, i as i32 + 1), [255, 0, 0, 255]),
+                mask: None,
+            })
+        })
+        .collect();
+    let mut merged = solid(rect(0, 0, 32, 32), [0, 0, 0, 0]);
+    fill(&mut merged, rect(0, 0, 1, 27), [255, 0, 0, 255]);
+    let ours = Document {
+        width: 32,
+        height: 32,
+        channels: Channels::Rgba,
+        icc_profile: None,
+        resolution_dpi: None,
+        layers,
+        merged,
+    };
+    let mut photoshop = ours.clone();
+
+    photoshop.layers.insert(
+        0,
+        Node::Layer(Layer {
+            name: "Layer 1".into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels: solid(rect(0, 0, 0, 0), [0, 0, 0, 0]),
+            mask: None,
+        }),
+    );
+    photoshop.icc_profile = Some(photoshop_profile("blends"));
     photoshop.resolution_dpi = Some(72.0);
     Fixture { ours, photoshop }
 }
