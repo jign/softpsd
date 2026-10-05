@@ -7,12 +7,13 @@ pub struct Fixture {
 }
 
 pub fn names() -> &'static [&'static str] {
-    &["smoke", "alpha", "hidden"]
+    &["smoke", "alpha", "hidden", "clip"]
 }
 
 pub fn fixture(name: &str) -> Fixture {
     match name {
         "smoke" => smoke(),
+        "clip" => clip(),
         "hidden" => hidden(),
         "alpha" => alpha(),
         _ => panic!("unknown fixture: {name}"),
@@ -285,6 +286,56 @@ fn hidden() -> Fixture {
         }),
     );
     photoshop.icc_profile = Some(photoshop_profile("hidden"));
+    photoshop.resolution_dpi = Some(72.0);
+    Fixture { ours, photoshop }
+}
+
+fn clip() -> Fixture {
+    let mut merged = solid(rect(0, 0, 32, 32), [0, 0, 0, 0]);
+    fill(&mut merged, rect(8, 8, 24, 24), [0, 0, 255, 255]);
+    let ours = Document {
+        width: 32,
+        height: 32,
+        channels: Channels::Rgba,
+        icc_profile: None,
+        resolution_dpi: None,
+        layers: vec![
+            Node::Layer(Layer {
+                name: "Base".into(),
+                visible: true,
+                opacity: 255,
+                blend: Blend::Normal,
+                clip_to_below: false,
+                pixels: solid(rect(8, 8, 24, 24), [255, 0, 0, 255]),
+                mask: None,
+            }),
+            Node::Layer(Layer {
+                name: "Clipped".into(),
+                visible: true,
+                opacity: 255,
+                blend: Blend::Normal,
+                clip_to_below: true,
+                pixels: solid(rect(0, 0, 32, 32), [0, 0, 255, 255]),
+                mask: None,
+            }),
+        ],
+        merged,
+    };
+    let mut photoshop = ours.clone();
+
+    photoshop.layers.insert(
+        0,
+        Node::Layer(Layer {
+            name: "Layer 1".into(),
+            visible: true,
+            opacity: 255,
+            blend: Blend::Normal,
+            clip_to_below: false,
+            pixels: solid(rect(0, 0, 0, 0), [0, 0, 0, 0]),
+            mask: None,
+        }),
+    );
+    photoshop.icc_profile = Some(photoshop_profile("clip"));
     photoshop.resolution_dpi = Some(72.0);
     Fixture { ours, photoshop }
 }
