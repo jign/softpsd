@@ -4,8 +4,15 @@
 
 #![forbid(unsafe_code)]
 
+pub mod blend;
+pub mod model;
 pub mod read;
+pub mod rle;
+pub mod validate;
 pub mod write;
+
+pub use model::{Blend, Channels, Document, Group, Image, Layer, Mask, Node, Rect};
+pub use write::{format_for, write};
 
 /// 8-bit RGB or RGBA layer data. Other depths and modes are refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
