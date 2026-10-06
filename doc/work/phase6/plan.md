@@ -116,4 +116,5 @@ Gate: tag on GitHub; `gate-all.ps1` green at the tag.
 ## After the phase
 
 - Soft Edge moves its `rev` to `tag = "v0.1.0"` and sets `read_with_limit` where it reads.
-  Its own unit, in its repo.
+  `write` now takes `Write + Seek`: its `Vec` goes through `std::io::Cursor`. Its own unit, in
+  its repo.

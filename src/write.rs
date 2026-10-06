@@ -1,8 +1,9 @@
 //! PSD/PSB writer.
 
 use crate::{
-    Blend, Channels, Document, Error, Format, Group, Layer, Node, Rect, Result, rle, validate,
+    Blend, Channels, Document, Error, Format, Group, Layer, Mask, Node, Rect, Result, rle, validate,
 };
+use std::io::{Seek, SeekFrom, Write};
 
 enum Record<'a> {
     Layer(&'a Layer),
@@ -23,146 +24,142 @@ fn flatten<'a>(nodes: &'a [Node], out: &mut Vec<Record<'a>>) {
     }
 }
 
-struct Channel {
-    id: i16,
-    data: Vec<u8>,
-}
-
-fn prepare_channels(records: &[Record<'_>], format: Format) -> Result<Vec<Vec<Channel>>> {
-    records
-        .iter()
-        .map(|record| record_channels(record, format))
-        .collect()
-}
-
-fn record_channels(record: &Record<'_>, format: Format) -> Result<Vec<Channel>> {
-    let mut channels = Vec::new();
+fn record_mask<'a>(record: &Record<'a>) -> Option<&'a Mask> {
     match record {
-        Record::Layer(layer) if !layer.pixels.rect.is_empty() => {
-            let (pixels, _) = layer.pixels.data.as_chunks::<4>();
-            for (id, index) in [(-1, 3), (0, 0), (1, 1), (2, 2)] {
-                let plane = component(pixels, index);
-                channels.push(Channel {
-                    id,
-                    data: encode_plane(&plane, layer.pixels.rect, format)?,
-                });
-            }
-        }
-        _ => {
-            for id in [-1, 0, 1, 2] {
-                channels.push(Channel {
-                    id,
-                    data: vec![0, 0],
-                });
-            }
-        }
-    }
-    let mask = match record {
         Record::Layer(layer) => layer.mask.as_ref(),
         Record::GroupStart(group) => group.mask.as_ref(),
         Record::GroupEnd => None,
-    };
-    if let Some(mask) = mask {
-        channels.push(Channel {
-            id: -2,
-            data: encode_plane(&mask.data, mask.rect, format)?,
-        });
-    }
-    Ok(channels)
-}
-
-// One match per plane, not per pixel: each arm is its own loop.
-fn component(pixels: &[[u8; 4]], index: usize) -> Vec<u8> {
-    match index {
-        0 => pixels.iter().map(|[r, ..]| *r).collect(),
-        1 => pixels.iter().map(|[_, g, ..]| *g).collect(),
-        2 => pixels.iter().map(|[_, _, b, _]| *b).collect(),
-        _ => pixels.iter().map(|[.., a]| *a).collect(),
     }
 }
 
-fn component_over_white(pixels: &[[u8; 4]], index: usize) -> Vec<u8> {
-    match index {
-        0 => pixels.iter().map(|[r, .., a]| over_white(*r, *a)).collect(),
-        1 => pixels
-            .iter()
-            .map(|[_, g, _, a]| over_white(*g, *a))
-            .collect(),
-        2 => pixels
-            .iter()
-            .map(|[_, _, b, a]| over_white(*b, *a))
-            .collect(),
-        _ => component(pixels, index),
+fn channel_ids(record: &Record<'_>) -> Vec<i16> {
+    let mut ids = vec![-1, 0, 1, 2];
+    if record_mask(record).is_some() {
+        ids.push(-2);
+    }
+    ids
+}
+
+// Writes one channel and returns its length. Empty layers and groups store it raw with zero rows.
+fn write_channel<W: Write + Seek>(
+    out: &mut W,
+    record: &Record<'_>,
+    id: i16,
+    format: Format,
+) -> Result<u64> {
+    if id == -2 {
+        let mask = record_mask(record).ok_or(Error::Malformed("mask"))?;
+        return write_plane(out, &mask.data, mask.rect, format, |&value| value);
+    }
+    match record {
+        Record::Layer(layer) if !layer.pixels.rect.is_empty() => {
+            let (pixels, _) = layer.pixels.data.as_chunks::<4>();
+            let rect = layer.pixels.rect;
+            match id {
+                -1 => write_plane(out, pixels, rect, format, |[.., a]| *a),
+                0 => write_plane(out, pixels, rect, format, |[r, ..]| *r),
+                1 => write_plane(out, pixels, rect, format, |[_, g, ..]| *g),
+                _ => write_plane(out, pixels, rect, format, |[_, _, b, _]| *b),
+            }
+        }
+        _ => {
+            out.write_all(&0u16.to_be_bytes())?;
+            Ok(2)
+        }
     }
 }
 
-fn encode_plane(data: &[u8], rect: Rect, format: Format) -> Result<Vec<u8>> {
-    let (counts, rows) = encode_rows(data, rect, format)?;
-    let mut channel = Vec::with_capacity(counts.len().saturating_add(rows.len()).saturating_add(2));
-    channel.extend_from_slice(&1u16.to_be_bytes());
-    channel.extend_from_slice(&counts);
-    channel.extend_from_slice(&rows);
-    Ok(channel)
+fn count_size(format: Format) -> usize {
+    match format {
+        Format::Psd => 2,
+        Format::Psb => 4,
+    }
 }
 
-// Row byte counts and PackBits rows, kept apart: the merged image stores every channel's counts first.
-fn encode_rows(data: &[u8], rect: Rect, format: Format) -> Result<(Vec<u8>, Vec<u8>)> {
+fn zeros(out: &mut impl Write, count: usize) -> Result<()> {
+    let count = u64::try_from(count).map_err(|_| Error::Unsupported("section length"))?;
+    std::io::copy(&mut std::io::Read::take(std::io::repeat(0), count), out)?;
+    Ok(())
+}
+
+// Compression, row counts, rows. The counts are written last, over a zeroed placeholder.
+fn write_plane<W: Write + Seek, T>(
+    out: &mut W,
+    data: &[T],
+    rect: Rect,
+    format: Format,
+    value: impl Fn(&T) -> u8,
+) -> Result<u64> {
+    out.write_all(&1u16.to_be_bytes())?;
+    let counts_at = out.stream_position()?;
+    let counts_len = rect
+        .height()
+        .checked_mul(count_size(format))
+        .ok_or(Error::Unsupported("section length"))?;
+    zeros(out, counts_len)?;
+    let counts = write_rows(out, data, rect, format, value)?;
+    let end = out.stream_position()?;
+    out.seek(SeekFrom::Start(counts_at))?;
+    out.write_all(&counts)?;
+    out.seek(SeekFrom::Start(end))?;
+    end.checked_sub(counts_at)
+        .and_then(|len| len.checked_add(2))
+        .ok_or(Error::Malformed("stream position"))
+}
+
+// Encodes and writes one row at a time; returns the row byte counts.
+fn write_rows<T>(
+    out: &mut impl Write,
+    data: &[T],
+    rect: Rect,
+    format: Format,
+    value: impl Fn(&T) -> u8,
+) -> Result<Vec<u8>> {
     let width = rect.width();
-    let mut channel = Vec::new();
-    let mut rows = Vec::new();
+    let height = rect.height();
+    let mut counts = Vec::new();
+    counts
+        .try_reserve_exact(height.saturating_mul(count_size(format)))
+        .map_err(|_| Error::Unsupported("allocation"))?;
+    let mut row = Vec::with_capacity(width);
+    let mut encoded = Vec::new();
     let mut rest = data;
-    for _ in 0..rect.height() {
-        let (row, tail) = rest
+    for _ in 0..height {
+        let (line, tail) = rest
             .split_at_checked(width)
             .ok_or(Error::Malformed("plane size"))?;
         rest = tail;
-        let start = rows.len();
-        rle::encode_row(row, &mut rows);
-        let encoded = rows.len().saturating_sub(start);
+        row.clear();
+        row.extend(line.iter().map(&value));
+        encoded.clear();
+        rle::encode_row(&row, &mut encoded);
         match format {
             Format::Psd => {
-                let count =
-                    u16::try_from(encoded).map_err(|_| Error::Unsupported("RLE row length"))?;
-                channel.extend_from_slice(&count.to_be_bytes());
+                let count = u16::try_from(encoded.len())
+                    .map_err(|_| Error::Unsupported("RLE row length"))?;
+                counts.extend_from_slice(&count.to_be_bytes());
             }
             Format::Psb => {
-                let count =
-                    u32::try_from(encoded).map_err(|_| Error::Unsupported("RLE row length"))?;
-                channel.extend_from_slice(&count.to_be_bytes());
+                let count = u32::try_from(encoded.len())
+                    .map_err(|_| Error::Unsupported("RLE row length"))?;
+                counts.extend_from_slice(&count.to_be_bytes());
             }
         }
+        out.write_all(&encoded)?;
     }
-    Ok((channel, rows))
+    Ok(counts)
 }
 
-pub fn write(doc: &Document, format: Format, out: &mut impl std::io::Write) -> Result<()> {
+/// Writes `doc` to `out`. Each channel is written as soon as it is encoded; the lengths that
+/// precede the channels are filled in afterwards, which is why `out` must seek. On error, `out`
+/// holds a partial file.
+pub fn write<W: Write + Seek>(doc: &Document, format: Format, out: &mut W) -> Result<()> {
     validate::validate(doc, format)?;
     let mut records = Vec::new();
     flatten(&doc.layers, &mut records);
     let count = i16::try_from(records.len()).map_err(|_| Error::Unsupported("layer count"))?;
-    let channels = prepare_channels(&records, format)?;
-    let mut layer_records = Vec::new();
-    let mut layer_info_len = 2usize;
-    for (id, (record, channels)) in (1u32..).zip(records.iter().zip(&channels)) {
-        let bytes = encode_record(record, channels, id, format)?;
-        layer_info_len = add_length(layer_info_len, bytes.len())?;
-        layer_records.push(bytes);
-        for channel in channels {
-            layer_info_len = add_length(layer_info_len, channel.data.len())?;
-        }
-    }
-    let padding = layer_info_len.wrapping_neg() % 4;
-    let layer_info_len = u64::try_from(add_length(layer_info_len, padding)?)
-        .map_err(|_| Error::Unsupported("section length"))?;
-    let layer_mask_len = layer_info_len
-        .checked_add(if format == Format::Psd { 8 } else { 12 })
-        .ok_or(Error::Unsupported("section length"))?;
-    if format == Format::Psd && layer_mask_len > u64::from(u32::MAX) {
-        return Err(Error::Unsupported("section length"));
-    }
     let resources = image_resources(doc)?;
     let resources_len = length(resources.len())?;
-    let merged = merged_channels(doc, format)?;
     let version: u16 = if format == Format::Psd { 1 } else { 2 };
     let channel_count: u16 = if doc.channels == Channels::Rgb { 3 } else { 4 };
     let count = if doc.channels == Channels::Rgba {
@@ -184,27 +181,97 @@ pub fn write(doc: &Document, format: Format, out: &mut impl std::io::Write) -> R
     out.write_all(&0u32.to_be_bytes())?;
     out.write_all(&resources_len.to_be_bytes())?;
     out.write_all(&resources)?;
-    write_length(out, layer_mask_len, format)?;
-    write_length(out, layer_info_len, format)?;
+
+    let section_lengths_at = out.stream_position()?;
+    write_length(out, 0, format)?;
+    write_length(out, 0, format)?;
+    let info_start = out.stream_position()?;
     out.write_all(&count.to_be_bytes())?;
-    for bytes in layer_records {
-        out.write_all(&bytes)?;
+    let mut block = Vec::new();
+    let mut length_fields = Vec::new();
+    for (id, record) in (1u32..).zip(&records) {
+        encode_record(
+            record,
+            &channel_ids(record),
+            id,
+            format,
+            &mut block,
+            &mut length_fields,
+        )?;
     }
-    for channels in channels {
-        for channel in channels {
-            out.write_all(&channel.data)?;
+    let block_at = out.stream_position()?;
+    out.write_all(&block)?;
+    let mut channel_lengths = Vec::with_capacity(length_fields.len());
+    for record in &records {
+        for id in channel_ids(record) {
+            channel_lengths.push(write_channel(out, record, id, format)?);
         }
     }
-    out.write_all([0; 3].get(..padding).unwrap_or_default())?;
+    let info_len = out
+        .stream_position()?
+        .checked_sub(info_start)
+        .ok_or(Error::Malformed("stream position"))?;
+    let padding = info_len.wrapping_neg() % 4;
+    out.write_all(
+        [0; 3]
+            .get(..usize::try_from(padding).unwrap_or_default())
+            .unwrap_or_default(),
+    )?;
     out.write_all(&0u32.to_be_bytes())?;
+    let layer_info_len = info_len
+        .checked_add(padding)
+        .ok_or(Error::Unsupported("section length"))?;
+    let layer_mask_len = layer_info_len
+        .checked_add(if format == Format::Psd { 8 } else { 12 })
+        .ok_or(Error::Unsupported("section length"))?;
 
     out.write_all(&1u16.to_be_bytes())?;
-    for (counts, _) in &merged {
-        out.write_all(counts)?;
+    let counts_at = out.stream_position()?;
+    let all_counts = doc
+        .merged
+        .rect
+        .height()
+        .checked_mul(count_size(format))
+        .and_then(|len| len.checked_mul(usize::from(channel_count)))
+        .ok_or(Error::Unsupported("section length"))?;
+    zeros(out, all_counts)?;
+    let (pixels, _) = doc.merged.data.as_chunks::<4>();
+    let rect = doc.merged.rect;
+    let mut counts = Vec::new();
+    for index in 0..channel_count {
+        let channel = match doc.channels {
+            Channels::Rgb => match index {
+                0 => write_rows(out, pixels, rect, format, |[r, ..]| *r),
+                1 => write_rows(out, pixels, rect, format, |[_, g, ..]| *g),
+                _ => write_rows(out, pixels, rect, format, |[_, _, b, _]| *b),
+            },
+            Channels::Rgba => match index {
+                0 => write_rows(out, pixels, rect, format, |[r, .., a]| over_white(*r, *a)),
+                1 => write_rows(out, pixels, rect, format, |[_, g, _, a]| over_white(*g, *a)),
+                2 => write_rows(out, pixels, rect, format, |[_, _, b, a]| over_white(*b, *a)),
+                _ => write_rows(out, pixels, rect, format, |[.., a]| *a),
+            },
+        }?;
+        counts.extend_from_slice(&channel);
     }
-    for (_, rows) in &merged {
-        out.write_all(rows)?;
+    let end = out.stream_position()?;
+
+    for (&at, &channel_length) in length_fields.iter().zip(&channel_lengths) {
+        let mut value = Vec::new();
+        write_length(&mut value, channel_length, format)?;
+        at.checked_add(value.len())
+            .and_then(|field_end| block.get_mut(at..field_end))
+            .ok_or(Error::Malformed("record block"))?
+            .copy_from_slice(&value);
     }
+    out.seek(SeekFrom::Start(block_at))?;
+    out.write_all(&block)?;
+    out.seek(SeekFrom::Start(section_lengths_at))?;
+    write_length(out, layer_mask_len, format)?;
+    write_length(out, layer_info_len, format)?;
+    out.seek(SeekFrom::Start(counts_at))?;
+    out.write_all(&counts)?;
+    out.seek(SeekFrom::Start(end))?;
     Ok(())
 }
 
@@ -220,7 +287,7 @@ fn length(value: usize) -> Result<u32> {
     u32::try_from(value).map_err(|_| Error::Unsupported("section length"))
 }
 
-fn write_length(out: &mut impl std::io::Write, value: u64, format: Format) -> Result<()> {
+fn write_length(out: &mut impl Write, value: u64, format: Format) -> Result<()> {
     match format {
         Format::Psd => out.write_all(
             &u32::try_from(value)
@@ -230,11 +297,6 @@ fn write_length(out: &mut impl std::io::Write, value: u64, format: Format) -> Re
         Format::Psb => out.write_all(&value.to_be_bytes())?,
     }
     Ok(())
-}
-
-fn add_length(left: usize, right: usize) -> Result<usize> {
-    left.checked_add(right)
-        .ok_or(Error::Unsupported("section length"))
 }
 
 fn rect_bytes(rect: Rect, out: &mut Vec<u8>) {
@@ -310,12 +372,15 @@ fn image_resources(doc: &Document) -> Result<Vec<u8>> {
     Ok(resources)
 }
 
+// Appends the record to `bytes` with zero channel lengths and pushes each length's offset.
 fn encode_record(
     record: &Record<'_>,
-    channels: &[Channel],
+    channel_ids: &[i16],
     id: u32,
     format: Format,
-) -> Result<Vec<u8>> {
+    bytes: &mut Vec<u8>,
+    length_fields: &mut Vec<usize>,
+) -> Result<()> {
     let empty_rect = Rect {
         top: 0,
         left: 0,
@@ -394,14 +459,14 @@ fn encode_record(
         }
     }
 
-    let mut bytes = Vec::new();
-    rect_bytes(rect, &mut bytes);
+    rect_bytes(rect, bytes);
     let channel_count =
-        u16::try_from(channels.len()).map_err(|_| Error::Unsupported("channel count"))?;
+        u16::try_from(channel_ids.len()).map_err(|_| Error::Unsupported("channel count"))?;
     bytes.extend_from_slice(&channel_count.to_be_bytes());
-    for channel in channels {
-        bytes.extend_from_slice(&channel.id.to_be_bytes());
-        write_length(&mut bytes, channel.data.len() as u64, format)?;
+    for channel_id in channel_ids {
+        bytes.extend_from_slice(&channel_id.to_be_bytes());
+        length_fields.push(bytes.len());
+        write_length(bytes, 0, format)?;
     }
     bytes.extend_from_slice(b"8BIM");
     bytes.extend_from_slice(&blend.key());
@@ -414,21 +479,7 @@ fn encode_record(
     bytes.extend_from_slice(&[flags, 0]);
     bytes.extend_from_slice(&length(extra.len())?.to_be_bytes());
     bytes.extend_from_slice(&extra);
-    Ok(bytes)
-}
-
-fn merged_channels(doc: &Document, format: Format) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
-    let (pixels, _) = doc.merged.data.as_chunks::<4>();
-    let count = if doc.channels == Channels::Rgb { 3 } else { 4 };
-    (0..count)
-        .map(|index| {
-            let plane = match doc.channels {
-                Channels::Rgb => component(pixels, index),
-                Channels::Rgba => component_over_white(pixels, index),
-            };
-            encode_rows(&plane, doc.merged.rect, format)
-        })
-        .collect()
+    Ok(())
 }
 
 #[allow(

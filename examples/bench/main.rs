@@ -43,17 +43,33 @@ static ALLOCATOR: Counting = Counting;
 
 const MB: f64 = 1024.0 * 1024.0;
 
-// Counts bytes and keeps none, so write heap excludes the output.
-struct Counter(usize);
+// Tracks position and length and keeps no bytes, so write heap excludes the output.
+#[derive(Default)]
+struct Counter {
+    position: u64,
+    len: u64,
+}
 
 impl std::io::Write for Counter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0 += buf.len();
+        self.position += buf.len() as u64;
+        self.len = self.len.max(self.position);
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+}
+
+impl std::io::Seek for Counter {
+    fn seek(&mut self, to: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.position = match to {
+            std::io::SeekFrom::Start(at) => at,
+            std::io::SeekFrom::End(delta) => self.len.saturating_add_signed(delta),
+            std::io::SeekFrom::Current(delta) => self.position.saturating_add_signed(delta),
+        };
+        Ok(self.position)
     }
 }
 
@@ -83,7 +99,7 @@ fn main() {
         cases.push(("dense", 8000));
     }
     println!(
-        "| target | document | side | model MB | write s | write heap MB | file MB | read s | read heap MB |"
+        "| target | document | side | model MB | write s | write heap KB | file MB | read s | read heap MB |"
     );
     println!("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     for (name, side) in cases {
@@ -93,18 +109,20 @@ fn main() {
         });
         let format = softpsd::format_for(side, side);
         let (file_size, write_time, write_heap) = measure(|| {
-            let mut out = Counter(0);
+            let mut out = Counter::default();
             softpsd::write(&doc, format, &mut out).expect("write");
-            out.0
+            out.len
         });
-        let mut bytes = Vec::new();
+        let mut bytes = std::io::Cursor::new(Vec::new());
         softpsd::write(&doc, format, &mut bytes).expect("write");
+        let bytes = bytes.into_inner();
         drop(doc);
         let (back, read_time, read_heap) = measure(|| softpsd::read(&bytes).expect("read"));
         drop(back);
         println!(
-            "| {target} | {name} | {side} | {model:.0} | {:.2} | {write_heap:.0} | {:.0} | {:.2} | {read_heap:.0} |",
+            "| {target} | {name} | {side} | {model:.0} | {:.2} | {:.0} | {:.0} | {:.2} | {read_heap:.0} |",
             write_time.as_secs_f64(),
+            write_heap * 1024.0,
             file_size as f64 / MB,
             read_time.as_secs_f64(),
         );

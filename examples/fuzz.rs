@@ -115,7 +115,7 @@ fn main() {
         let outcome = panic::catch_unwind(AssertUnwindSafe(|| {
             let doc = softpsd::read_with_limit(&bytes, limit)?;
             let format = softpsd::format_for(doc.width, doc.height);
-            softpsd::write(&doc, format, &mut std::io::sink())
+            softpsd::write(&doc, format, &mut std::io::Cursor::new(Vec::new()))
         }));
         match outcome {
             Ok(Ok(())) => read += 1,

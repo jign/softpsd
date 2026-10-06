@@ -1,7 +1,7 @@
 # Write
 
 ```rust
-pub fn write(doc: &Document, format: Format, out: &mut impl Write) -> Result<()>;
+pub fn write<W: Write + Seek>(doc: &Document, format: Format, out: &mut W) -> Result<()>;
 pub fn format_for(width: u32, height: u32) -> Format;   // Psb above 30,000 on either side
 ```
 
@@ -30,9 +30,10 @@ pub fn format_for(width: u32, height: u32) -> Format;   // Psb above 30,000 on e
   groups. Clipping byte from `clip_to_below`.
 - Resolution: 1005 written only when given. ICC: 1039 written only when given, bytes
   untouched. 1057 is always written with writer name `softpsd`.
-- Output is streamed in one pass except for section lengths, which are known before each
-  section is emitted because every part's size is computable from the model. No seeking,
-  so `out` can be a socket or a compressor.
+- Output is streamed one row at a time. Section lengths, channel lengths and row counts are
+  written as zeros and filled in by seeking back, so the working heap is the row counts and
+  one row, whatever the document size. Writing starts at `out`'s current position. On error,
+  `out` holds a partial file.
 
 ## Not written
 

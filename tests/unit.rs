@@ -34,11 +34,11 @@ fn validate_refuses() {
         layers: vec![Node::Layer(layer.clone())],
         merged: image,
     };
-    assert!(softpsd::write(&doc, Format::Psd, &mut std::io::sink()).is_ok());
+    assert!(softpsd::write(&doc, Format::Psd, &mut std::io::Cursor::new(Vec::new())).is_ok());
 
     layer.blend = Blend::PassThrough;
     doc.layers = vec![Node::Layer(layer.clone())];
-    assert!(softpsd::write(&doc, Format::Psd, &mut std::io::sink()).is_err());
+    assert!(softpsd::write(&doc, Format::Psd, &mut std::io::Cursor::new(Vec::new())).is_err());
 
     layer.blend = Blend::Normal;
     layer.mask = Some(Mask {
@@ -48,13 +48,19 @@ fn validate_refuses() {
         disabled: false,
     });
     doc.layers = vec![Node::Layer(layer)];
-    assert!(softpsd::write(&doc, Format::Psd, &mut std::io::sink()).is_err());
+    assert!(softpsd::write(&doc, Format::Psd, &mut std::io::Cursor::new(Vec::new())).is_err());
 
     doc.layers.clear();
     doc.width = 31_000;
     doc.merged.rect.right = 31_000;
     doc.merged.data.resize(31_000 * 4, 0);
-    assert!(softpsd::write(&doc, Format::Psd, &mut std::io::sink()).is_err());
+    assert!(softpsd::write(&doc, Format::Psd, &mut std::io::Cursor::new(Vec::new())).is_err());
+}
+
+fn written(doc: &Document, format: Format) -> Vec<u8> {
+    let mut out = std::io::Cursor::new(Vec::new());
+    softpsd::write(doc, format, &mut out).unwrap();
+    out.into_inner()
 }
 
 #[test]
@@ -62,8 +68,7 @@ fn fixtures_round_trip() {
     for &name in fixtures::names() {
         let expected = fixtures::fixture(name).ours;
         let format = softpsd::format_for(expected.width, expected.height);
-        let mut bytes = Vec::new();
-        softpsd::write(&expected, format, &mut bytes).unwrap();
+        let bytes = written(&expected, format);
         let actual = softpsd::read(&bytes).unwrap();
         assert!(actual == expected, "fixture {name}: round trip");
         let path = fixtures::root().join(format!(
@@ -120,8 +125,7 @@ fn smoke_field_positions(bytes: &[u8]) -> (usize, usize, usize) {
 
 #[test]
 fn read_refuses() {
-    let mut bytes = Vec::new();
-    softpsd::write(&fixtures::fixture("smoke").ours, Format::Psd, &mut bytes).unwrap();
+    let mut bytes = written(&fixtures::fixture("smoke").ours, Format::Psd);
     assert!((0..bytes.len()).step_by(7).all(|length| {
         std::panic::catch_unwind(|| softpsd::read(&bytes[..length]))
             .is_ok_and(|result| result.is_err())
@@ -181,8 +185,7 @@ fn read_with_limit_refuses_above_the_cap() {
 
 #[test]
 fn sizes_past_u32_refuse_on_every_target() {
-    let mut bytes = Vec::new();
-    softpsd::write(&fixtures::fixture("smoke").ours, Format::Psd, &mut bytes).unwrap();
+    let mut bytes = written(&fixtures::fixture("smoke").ours, Format::Psd);
     let (_, _, rect) = smoke_field_positions(&bytes);
     let side = 70_000i32.to_be_bytes();
     bytes[rect + 8..rect + 12].copy_from_slice(&side);

@@ -153,9 +153,9 @@ fn main() {
         };
         let format = softpsd::format_for(side, side);
         let (bytes, ours_write, ours_write_heap) = measure(|| {
-            let mut out = Vec::new();
+            let mut out = std::io::Cursor::new(Vec::new());
             softpsd::write(&doc, format, &mut out).expect("softpsd write");
-            out
+            out.into_inner()
         });
         let model = to_ag(&doc);
         drop(doc);
