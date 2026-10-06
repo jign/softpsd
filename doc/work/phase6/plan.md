@@ -1,93 +1,120 @@
-# Phase 6: publish
+# Phase 6: industrial wasm
 
-Goal: `softpsd` 0.1.0 on crates.io, with a README and rustdoc a stranger can use, and an
-API we are willing to keep for the 0.1 line.
+Goal: a PSD/PSB library that never panics, never aborts on a hostile file, runs on wasm32 as a
+first-class target, and writes large documents with the least working memory we can reach.
+Public on GitHub, tagged `v0.1.0`, used as a git dependency. Not published to crates.io.
+
+Position against ag-psd-rs, measured natively on 26 layers at 8000 x 8000: both pass our
+Photoshop writer gate on all twelve fixtures. softpsd writes in 7.7 s with 1.6 GB of working
+heap; ag-psd-rs takes 20.9 s and ~10 GB, panics on bad input, and cannot embed an ICC
+profile. ag-psd-rs covers far more of the format. We do not compete on features; we compete
+on memory, speed and failure behaviour.
 
 In chunks, reviewed once per chunk. One commit per item, one line each.
 
 ## Rules for this phase
 
-- The crate stays dependency-free, dev-dependencies included. Benches use `std::time`.
-- No reader or writer behaviour changes. A finding that needs one goes to the reviewer.
-- No comment references a doc. Rustdoc says what an item does and what it refuses, nothing
-  else.
-- `cargo publish` cannot be undone, only yanked. The PM runs it or approves it on the spot.
+- The crate stays dependency-free, dev-dependencies included. Anything else lives in its own
+  Cargo project under `tools/`.
+- Reader and writer output does not change. The only behaviour change allowed is a panic or
+  an abort becoming an `Error`.
+- Numbers are recorded, never asserted. No test asserts a timing or a byte count.
+- No comment references a doc.
+- Every fuzz or bench run has a fixed cap: a case count or a time budget, and a printed seed.
 
 ## Chunk 1: housekeeping
 
-- Push `ce1c54f` (the phase 5 report) and this plan.
-- `Cargo.toml`: `include = ["src/**", "README.md", "LICENSE-*", "Cargo.toml"]`. Tests and
-  examples stay out: both pull in `tests/common/` and the fixtures, and `doc/`, `tools/`
-  have no place in the package.
-- `Cargo.toml`: `documentation = "https://docs.rs/softpsd"`, `readme = "README.md"`.
-- Check `rust-version = "1.97"` is true: it is the toolchain we build on, so it stays unless
-  a lower one is cheap to prove. Do not chase a lower MSRV.
-- `tools/gate-all.ps1`: add `cargo package` after `cargo test`. It builds the packaged crate
-  in isolation, so a missing file in `include` fails the gate.
+- Push `master`.
+- `Cargo.toml`: `include = ["src/**", "README.md", "LICENSE-*", "Cargo.toml"]`. Keeps
+  `cargo package` meaningful as a self-containment check. `publish` stays `false`.
+- `tools/gate-all.ps1`: `cargo package` after `cargo test`.
+- README: the "Not ready" notice comes down. Status line: 0.1, git dependency only, the
+  goals of this phase in one sentence each. Install line:
+  `softpsd = { git = "https://github.com/jign/softpsd", tag = "v0.1.0" }`.
+- README: one line pointing to ag-psd-rs for text layers, effects and high bit depth.
 
-Gate: `gate-all.ps1` passes; `cargo package --list` shows only `src/`, README, licences,
-manifest.
+Gate: `gate-all.ps1` passes.
 
 ## Chunk 2: API surface for 0.1
 
-Everything public now is a promise. Review and cut:
-
-- `rle` and `validate` are `pub mod`. `rle` is an implementation detail: make it private.
-  `validate` runs inside `write`; keep `validate::validate` public only if Soft Edge calls
-  it (check `dev/0.4.0`), otherwise private.
-- `blend` exposes `Blend::key` and `Blend::from_key`, the four-byte Photoshop keys. Private
-  unless a caller needs them.
-- `Header` has raw `channel_count`, `depth`, `color_mode` as `u16`. Keep them: `read_header`
-  exists to report what a file is before we refuse it, so raw values are the point.
+- `rle`, `validate`, `blend` become private modules. Soft Edge uses none of them directly.
+  `Blend::key` and `Blend::from_key` go with `blend`.
 - `#[non_exhaustive]` on `Error` and `Blend`. Not on the model structs: callers build them
-  with struct literals, and Soft Edge does.
-- `Error` variants carry `&'static str` reasons. Keep.
+  with struct literals.
+- `Header` keeps its raw `u16` fields: it reports what a file is before we refuse it.
 
-Gate: Soft Edge's `dev/0.4.0` still builds against the trimmed crate through a local `path`
-override (not committed there); `gate-all.ps1` passes.
+Gate: Soft Edge `dev/0.4.0` builds against the trimmed crate through a local `path`
+override, not committed there; `gate-all.ps1` passes.
 
-## Chunk 3: docs
+## Chunk 3: never panics
 
-- README: the "Not ready" notice comes down. Replace with a short status line: 0.1, 8-bit
-  RGB/RGBA, write and read the subset in Scope, gated against Photoshop 27.
-- README: a 15-line example that builds a two-layer `Document` and writes it, and one that
-  reads a file and prints layer names. Both compiled: include the README as crate docs with
-  `#![doc = include_str!("../README.md")]` so `cargo test` runs them as doctests.
-- README "Contributing": issues welcome now; PRs that change the writer still need a fixture
-  Photoshop opened. Drop the "while the notice is up" wording.
-- README "Docs": `doc/` is not in the package; link to the GitHub tree instead of paths.
-- Rustdoc on every public item. `#![warn(missing_docs)]` in `lib.rs`; clippy in the gate
-  then catches a missing one.
-- `CHANGELOG.md`: one section, `0.1.0`, five lines at most.
+- Lints, library code only (`cfg_attr(not(test), ...)`): deny `clippy::unwrap_used`,
+  `expect_used`, `panic`, `unreachable`, `todo`, `indexing_slicing`,
+  `arithmetic_side_effects`, `cast_possible_truncation`. Fix every hit; each fix returns an
+  `Error` or is proven by the types. An `#[allow]` carries a one-line reason.
+- usize is 32 bits on wasm32. Every size computed from file fields uses checked u64
+  arithmetic and converts with `try_from`. A 300,000 px PSB rect must refuse, not wrap.
+- Allocation bounds: no buffer is sized from a file field before that field is checked
+  against the input. Raw data cannot exceed the bytes left; PackBits output cannot exceed
+  the declared rows. A file that claims more than it can hold is `Malformed`.
+- `read_with_limit(input, max_decoded_bytes)`: refuses before allocating when the decoded
+  document would exceed the cap. `read` is `read_with_limit` without a cap. A wasm host sets
+  it from its heap headroom.
+- `examples/fuzz.rs`: byte mutations (flip, truncate, splice, length-field overwrite) of every
+  fixture, `catch_unwind` around `read`, fails on the first panic and prints the seed and the
+  mutated file. Arguments: seed, case count. `gate-all.ps1` runs it with a fixed seed and a
+  count that finishes in under 30 s.
 
-Gate: `cargo doc --no-deps` has no warnings; doctests pass; README reads correctly on the
-GitHub page.
+Gate: clippy clean with the lints; the fuzzer runs 1,000,000 cases once, by hand, with no
+panic; the corpus still reads or refuses as before.
 
-## Chunk 4: benches
+## Chunk 4: wasm32 as a target
 
-- `examples/bench.rs`, release build, no harness: write and read at 2K and 8K, one layer and
-  26 layers (the phase 5 shape), print ms and MB/s. Records numbers, asserts nothing.
-- Results in `doc/lab/bench.md`: machine, toolchain, the table. One file, overwritten when
-  rerun.
-- Not in `gate-all.ps1`.
+- `cargo build --target wasm32-unknown-unknown` in `gate-all.ps1`.
+- `cargo test --target wasm32-wasip1` under wasmtime in `gate-all.ps1`: the fixture round
+  trips and the fuzzer's fixed-seed run. `tools/setup.ps1` installs the target and checks for
+  wasmtime; the gate fails when either is missing, never skips.
+- One test at the wasm32 boundary: a document whose decoded size passes `u32::MAX` refuses
+  on wasm32 and native alike.
 
-Gate: the numbers exist. No target. If 8K write is slower than Soft Edge's export budget,
-that is a finding for the reviewer, not a blocker.
+Gate: both wasm steps pass inside `gate-all.ps1`.
 
-## Chunk 5: publish
+## Chunk 5: measure
 
-- `publish = true` (or remove the line).
-- `cargo publish --dry-run`, then the PM approves, then `cargo publish`. `cargo login` is
-  the PM's step if no token is set.
-- Tag `v0.1.0`, push the tag.
-- Check docs.rs built the page.
-- From a scratch project outside the repo: `cargo add softpsd`, read
-  `tests/fixtures/softpsd-smoke.psd`, write it back, compare bytes.
+- `examples/bench.rs`: a counting global allocator in the example itself, std only. Write
+  and read at 2K and 8K, 26 layers, the phase 5 shape plus a dense synthetic one. Prints time,
+  peak heap above the input model, output size.
+- Runs native and under wasmtime.
+- `tools/compare-agpsd/`: its own Cargo project, `ag-psd` pinned, the same documents through
+  ag-psd-rs. Gitignored `target/`.
+- `doc/lab/bench.md`: machine, toolchains, one table. Overwritten when rerun.
 
-Gate: on crates.io, docs.rs green, the scratch round trip matches.
+Gate: the table exists for native and wasm.
+
+## Chunk 6: writer memory
+
+The writer buffers the whole layer section before writing it, so its peak is about twice the
+output file: 1.6 GB for a 794 MB file in the dense 8K case.
+
+- Find where the peak goes, from the bench, before changing anything.
+- Target: working heap bounded by the largest layer's encoded channels plus the merged image,
+  not by the document. The section lengths PSD needs up front come from a sizing pass over
+  the encoded layers, or from `Write + Seek` back-patching. The reviewer picks after the
+  numbers.
+- Output stays byte-identical: the fixture gates and the phase 5 three-export check prove it.
+
+Gate: the bench shows the new peak; every fixture writes the same bytes as before.
+
+## Chunk 7: tag
+
+- Rustdoc on every public item, `#![warn(missing_docs)]`. The README examples compiled as
+  doctests through `#![doc = include_str!("../README.md")]`.
+- `CHANGELOG.md`: `0.1.0`, five lines at most.
+- Tag `v0.1.0`, push it.
+
+Gate: tag on GitHub; `gate-all.ps1` green at the tag.
 
 ## After the phase
 
-- Soft Edge moves from the git `rev` to `softpsd = "0.1"`. Its own unit, in its repo.
-- `doc/work/plan.md`: phase 6 green. Whether `doc/work/` stays in the public repo after
-  0.1.0 is a PM call; it is excluded from the package either way.
+- Soft Edge moves its `rev` to `tag = "v0.1.0"` and sets `read_with_limit` where it reads.
+  Its own unit, in its repo.

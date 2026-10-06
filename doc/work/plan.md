@@ -10,6 +10,7 @@ A finding that changes a spec corrects the spec in the same commit.
 | 3 Fixtures | the other eleven rows of `spec/gates.md`, one commit each | every fixture passes writer gate 1 and 2 and the reader gate |
 | 4 Gate automation | PhotoshopAPI dump, `tools/fetch-corpus.ps1`, `--features corpus`, corpus triage, GIMP and Krita composites when installed, `tools/gate-all.ps1` | corpus reads or refuses, never panics; one command runs every gate |
 | 5 Soft Edge export | in the Soft Edge repo: git `rev` dependency, tree to model mapping, PSB switch, one-way notice; measure gamma blending against Photoshop | an 8K export opens in Photoshop and matches |
-| 6 Publish | benches, README, notice down, `publish = true`, 0.1.0 | on crates.io |
+| 6 Industrial wasm | never panics, allocation bounds, wasm32 in the gate, benches against ag-psd-rs, writer memory, `v0.1.0` tag | fuzzer and corpus never panic; wasm32 tests pass; tag on GitHub |
+| 7 Streaming | writer that takes one layer at a time; reader that indexes the file and decodes one layer on demand | a 16K export and import fit Soft Edge's wasm heap |
 
-Phases 1 to 5 are green. Phase 6 (publish) is planned in `phase6/plan.md`.
+Phases 1 to 5 are green. Phase 6 is planned in `phase6/plan.md`. softpsd is a public GitHub repo, not published to crates.io.
