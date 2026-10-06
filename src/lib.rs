@@ -25,6 +25,7 @@ pub enum Format {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     Io(std::io::Error),
     Unsupported(&'static str),
