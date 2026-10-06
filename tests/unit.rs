@@ -90,7 +90,7 @@ fn fixtures_read_photoshop() {
     }
 }
 
-fn smoke_field_positions(bytes: &[u8]) -> (usize, usize) {
+fn smoke_field_positions(bytes: &[u8]) -> (usize, usize, usize) {
     let mut file = Walker(bytes);
     file.take(4);
     file.u16();
@@ -110,11 +110,12 @@ fn smoke_field_positions(bytes: &[u8]) -> (usize, usize) {
     let layer_info_len = layer_mask.u32() as usize;
     let mut layer_info = Walker(layer_mask.take(layer_info_len));
     layer_info.u16();
+    let rect = layer_info.0.as_ptr() as usize - bytes.as_ptr() as usize;
     layer_info.take(16);
     layer_info.u16();
     layer_info.u16();
     let channel_length = layer_info.0.as_ptr() as usize - bytes.as_ptr() as usize;
-    (depth, channel_length)
+    (depth, channel_length, rect)
 }
 
 #[test]
@@ -125,7 +126,7 @@ fn read_refuses() {
         std::panic::catch_unwind(|| softpsd::read(&bytes[..length]))
             .is_ok_and(|result| result.is_err())
     }));
-    let (depth, channel_length) = smoke_field_positions(&bytes);
+    let (depth, channel_length, _) = smoke_field_positions(&bytes);
     let mut bad_depth = bytes.clone();
     bad_depth[depth..depth + 2].copy_from_slice(&16u16.to_be_bytes());
     assert!(matches!(
@@ -178,3 +179,22 @@ fn read_with_limit_refuses_above_the_cap() {
     }
 }
 
+#[test]
+fn sizes_past_u32_refuse_on_every_target() {
+    let mut bytes = Vec::new();
+    softpsd::write(&fixtures::fixture("smoke").ours, Format::Psd, &mut bytes).unwrap();
+    let (_, _, rect) = smoke_field_positions(&bytes);
+    let side = 70_000i32.to_be_bytes();
+    bytes[rect + 8..rect + 12].copy_from_slice(&side);
+    bytes[rect + 12..rect + 16].copy_from_slice(&side);
+    let Err(softpsd::Error::OverLimit { needed, .. }) =
+        softpsd::read_with_limit(&bytes, u64::from(u32::MAX))
+    else {
+        panic!("no refusal at the u32 limit");
+    };
+    assert!(needed > u64::from(u32::MAX));
+    assert!(matches!(
+        softpsd::read(&bytes),
+        Err(softpsd::Error::Malformed(_))
+    ));
+}
