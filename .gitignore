@@ -1,6 +1,7 @@
 target/
 Cargo.lock
 tools/.venv/
+tools/wasmtime/
 tools/readers/node_modules/
 tools/readers/package-lock.json
 corpus/

@@ -77,7 +77,11 @@ fn main() {
     let seed: u64 = args.next().and_then(|a| a.parse().ok()).unwrap_or(1);
     let cases: u64 = args.next().and_then(|a| a.parse().ok()).unwrap_or(10_000);
 
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = if cfg!(target_os = "wasi") {
+        Path::new(".")
+    } else {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+    };
     let mut inputs: Vec<(String, Vec<u8>)> = std::fs::read_dir(root.join("tests/fixtures"))
         .expect("tests/fixtures")
         .filter_map(|entry| {

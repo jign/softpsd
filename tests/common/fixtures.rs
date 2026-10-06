@@ -1,6 +1,14 @@
 use softpsd::{Blend, Channels, Document, Group, Image, Layer, Mask, Node, Rect};
 use std::path::Path;
 
+pub fn root() -> &'static Path {
+    if cfg!(target_os = "wasi") {
+        Path::new(".")
+    } else {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+    }
+}
+
 pub struct Fixture {
     pub ours: Document,
     pub photoshop: Document,
@@ -154,8 +162,7 @@ pub fn extension(name: &str) -> &'static str {
 }
 
 fn photoshop_profile(name: &str) -> Vec<u8> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(format!("tests/fixtures/ps27-{name}.{}", extension(name)));
+    let path = root().join(format!("tests/fixtures/ps27-{name}.{}", extension(name)));
     let bytes = std::fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
     let mut file = Walker(&bytes);
     file.take(26);

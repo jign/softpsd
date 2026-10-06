@@ -18,6 +18,9 @@ try {
         -not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'readers\node_modules'))) {
         throw 'External readers missing. Run tools\setup.ps1 first.'
     }
+    if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'wasmtime\wasmtime.exe'))) {
+        throw 'wasmtime missing. Run tools\setup.ps1 first.'
+    }
     Write-Output 'setup: external reader directories present'
     $step = 'cargo fmt --check'
     Invoke-Check { & cargo fmt --check }
@@ -29,6 +32,12 @@ try {
     Invoke-Check { & cargo package --allow-dirty --quiet }
     $step = 'fuzz'
     Invoke-Check { & cargo run --release --quiet --example fuzz -- 7 200000 }
+    $step = 'wasm32-unknown-unknown build'
+    Invoke-Check { & cargo build --quiet --lib --target wasm32-unknown-unknown }
+    $step = 'wasm32-wasip1 tests'
+    Invoke-Check { & cargo test --quiet --target wasm32-wasip1 }
+    $step = 'wasm32-wasip1 fuzz'
+    Invoke-Check { & cargo run --release --quiet --target wasm32-wasip1 --example fuzz -- 7 100000 }
     $step = 'fixture gates'
     Invoke-Check { & (Join-Path $PSScriptRoot 'gate-fixtures.ps1') }
     if (Test-Path -LiteralPath (Join-Path $root 'corpus')) {

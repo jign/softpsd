@@ -46,6 +46,13 @@ Then the corpus: `tools/fetch-corpus.ps1` pulls the ag-psd and psd-tools test fi
 psd-tools, or refuse with `Error::Unsupported`. A panic or a `Malformed` on a file Photoshop
 wrote is a bug. This runs by hand, `cargo test --features corpus`.
 
+## Panics and wasm32
+
+`examples/fuzz.rs` mutates every fixture, reads the result and writes back whatever reads; any
+panic fails. `gate-all.ps1` runs it natively (200,000 cases) and under wasmtime on
+`wasm32-wasip1` (100,000 cases), runs `cargo test` on `wasm32-wasip1`, and builds the library
+for `wasm32-unknown-unknown`.
+
 ## Third-party checks
 
 | Reader | How | Gate |

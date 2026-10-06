@@ -4,6 +4,8 @@ Run every release check with `tools\gate-all.ps1` (Photoshop must be open).
 
 `setup.ps1` installs every external reader into gitignored folders under `tools/`. Run it once
 per machine. Nothing external is committed.
+It also adds the `wasm32-unknown-unknown` and `wasm32-wasip1` targets and a pinned wasmtime in
+`tools/wasmtime/`; `.cargo/config.toml` runs `wasm32-wasip1` binaries through it.
 
 - `photoshop/run.ps1 <script.jsx> [-Out <file>]` runs a script in the open Photoshop and prints its result. `-Out` reaches the script as `OUT`.
 - `photoshop/fixtures/smoke.jsx` builds the reference fixture and saves it to `OUT`.
