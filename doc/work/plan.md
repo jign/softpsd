@@ -13,4 +13,4 @@ A finding that changes a spec corrects the spec in the same commit.
 | 6 Industrial wasm | never panics, allocation bounds, wasm32 in the gate, benches against ag-psd-rs, writer memory, `v0.1.0` tag | fuzzer and corpus never panic; wasm32 tests pass; tag on GitHub |
 | 7 Streaming | writer that takes one layer at a time; reader that indexes the file and decodes one layer on demand | a 16K export and import fit Soft Edge's wasm heap |
 
-Phases 1 to 5 are green. Phase 6 is planned in `phase6/plan.md`. softpsd is a public GitHub repo, not published to crates.io.
+Phases 1 to 6 are green; `v0.1.0` is tagged. softpsd is a public GitHub repo, not published to crates.io.
