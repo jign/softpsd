@@ -14,8 +14,8 @@ pub(crate) fn validate(doc: &Document, format: Format) -> Result<()> {
     let merged_rect = Rect {
         top: 0,
         left: 0,
-        bottom: doc.height as i32,
-        right: doc.width as i32,
+        bottom: i32::try_from(doc.height).map_err(|_| Error::Unsupported("side limit"))?,
+        right: i32::try_from(doc.width).map_err(|_| Error::Unsupported("side limit"))?,
     };
     if doc.merged.rect != merged_rect
         || area(merged_rect)?.checked_mul(4) != Some(doc.merged.data.len())
@@ -61,7 +61,7 @@ fn validate_nodes(nodes: &[Node], depth: usize) -> Result<()> {
                 if let Some(mask) = &group.mask {
                     validate_mask(mask)?;
                 }
-                validate_nodes(&group.children, depth + 1)?;
+                validate_nodes(&group.children, depth.saturating_add(1))?;
             }
         }
     }

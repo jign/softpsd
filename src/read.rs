@@ -33,7 +33,7 @@ impl<'a> Cursor<'a> {
     }
 
     fn remaining(&self) -> usize {
-        self.data.len() - self.pos
+        self.data.len().saturating_sub(self.pos)
     }
 
     fn bytes<const N: usize>(&mut self) -> Result<[u8; N]> {
@@ -255,7 +255,7 @@ fn read_mask(cursor: &mut Cursor<'_>) -> Result<Option<Mask>> {
 fn read_pascal_name(cursor: &mut Cursor<'_>) -> Result<String> {
     let length = u64::from(cursor.u8()?);
     let bytes = cursor.take(length)?;
-    cursor.skip((4 - (length + 1) % 4) % 4)?;
+    cursor.skip(padding4(length.wrapping_add(1)))?;
     let mut name = String::new();
     name.try_reserve_exact(bytes.len())
         .map_err(|_| Error::Malformed("layer name"))?;
@@ -272,16 +272,16 @@ fn read_pascal_name(cursor: &mut Cursor<'_>) -> Result<String> {
 fn read_unicode_name(data: &[u8]) -> Result<String> {
     let mut cursor = Cursor::new(data);
     let count = u64::from(cursor.u32()?);
-    let bytes = cursor.take(count * 2)?;
-    let capacity = (bytes.len() / 2)
+    let bytes = cursor.take(count.checked_mul(2).ok_or(Error::Malformed("layer name"))?)?;
+    let (pairs, _) = bytes.as_chunks::<2>();
+    let capacity = pairs
+        .len()
         .checked_mul(3)
         .ok_or(Error::Malformed("layer name"))?;
     let mut name = String::new();
     name.try_reserve_exact(capacity)
         .map_err(|_| Error::Malformed("layer name"))?;
-    let units = bytes
-        .chunks_exact(2)
-        .map(|pair| u16::from_be_bytes([pair[0], pair[1]]));
+    let units = pairs.iter().map(|&pair| u16::from_be_bytes(pair));
     for ch in char::decode_utf16(units) {
         name.push(ch.map_err(|_| Error::Malformed("layer name"))?);
     }
@@ -329,8 +329,11 @@ fn refused_layer(key: &[u8; 4]) -> Option<&'static str> {
 fn read_record(cursor: &mut Cursor<'_>, format: Format) -> Result<RawLayer> {
     let rect = read_rect(cursor)?;
     let count = usize::from(cursor.u16()?);
-    let pair_size = if format == Format::Psd { 6 } else { 10 };
-    if count > cursor.remaining() / pair_size {
+    let pair_size: usize = if format == Format::Psd { 6 } else { 10 };
+    if count
+        .checked_mul(pair_size)
+        .is_none_or(|bytes| bytes > cursor.remaining())
+    {
         return Err(Error::Malformed("truncated"));
     }
     let mut channels = Vec::new();
@@ -529,13 +532,13 @@ fn interleave(rect: Rect, planes: [Option<Vec<u8>>; 4]) -> Result<Image> {
     let mut data = Vec::new();
     data.try_reserve_exact(length)
         .map_err(|_| Error::Malformed("channel data"))?;
-    for i in 0..area {
-        data.extend_from_slice(&[
-            red[i],
-            green[i],
-            blue[i],
-            alpha.as_ref().map_or(255, |plane| plane[i]),
-        ]);
+    let alpha = alpha
+        .iter()
+        .flatten()
+        .copied()
+        .chain(std::iter::repeat(255));
+    for (((&r, &g), &b), a) in red.iter().zip(&green).zip(&blue).zip(alpha) {
+        data.extend_from_slice(&[r, g, b, a]);
     }
     Ok(Image { rect, data })
 }
@@ -657,8 +660,8 @@ fn read_merged(cursor: &mut Cursor<'_>, header: Header, channels: Channels) -> R
     let rect = Rect {
         top: 0,
         left: 0,
-        bottom: header.height as i32,
-        right: header.width as i32,
+        bottom: i32::try_from(header.height).map_err(|_| Error::Malformed("header"))?,
+        right: i32::try_from(header.width).map_err(|_| Error::Malformed("header"))?,
     };
     let plane_counts = if compression == 1 {
         count_bytes(rect, header.format)?
@@ -685,19 +688,32 @@ fn read_merged(cursor: &mut Cursor<'_>, header: Header, channels: Channels) -> R
     }
     let mut image = interleave(rect, planes)?;
     if channels == Channels::Rgba {
-        for pixel in image.data.chunks_exact_mut(4) {
-            let alpha = i32::from(pixel[3]);
-            for colour in &mut pixel[..3] {
-                *colour = if alpha == 0 {
-                    0
-                } else {
-                    (((i32::from(*colour) - 255 + alpha) * 255 + alpha / 2) / alpha).clamp(0, 255)
-                        as u8
-                };
+        for [r, g, b, a] in image.data.as_chunks_mut::<4>().0 {
+            for colour in [r, g, b] {
+                *colour = unmatte(*colour, *a);
             }
         }
     }
     Ok(image)
+}
+
+// Photoshop stores a transparent merged image blended over white.
+#[allow(
+    clippy::arithmetic_side_effects,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "u8 inputs keep every step inside i32, clamp keeps the result in u8"
+)]
+fn unmatte(colour: u8, alpha: u8) -> u8 {
+    if alpha == 0 {
+        return 0;
+    }
+    let (colour, alpha) = (i32::from(colour), i32::from(alpha));
+    (((colour - 255 + alpha) * 255 + alpha / 2) / alpha).clamp(0, 255) as u8
+}
+
+fn padding4(length: u64) -> u64 {
+    length.wrapping_neg() % 4
 }
 
 pub fn read(input: &[u8]) -> Result<Document> {

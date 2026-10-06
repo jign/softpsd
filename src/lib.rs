@@ -3,6 +3,22 @@
 //! Write path first. The reader covers what the writer emits and refuses the rest.
 
 #![forbid(unsafe_code)]
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap,
+        clippy::cast_sign_loss
+    )
+)]
 
 mod blend;
 mod model;
@@ -29,7 +45,10 @@ pub enum Format {
 pub enum Error {
     Io(std::io::Error),
     Unsupported(&'static str),
-    UnsupportedLayer { name: String, reason: &'static str },
+    UnsupportedLayer {
+        name: String,
+        reason: &'static str,
+    },
     Malformed(&'static str),
 }
 

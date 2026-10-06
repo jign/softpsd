@@ -3,62 +3,85 @@
 use crate::{Error, Result};
 
 pub(crate) fn encode_row(row: &[u8], out: &mut Vec<u8>) {
-    let mut pos = 0;
-    while pos < row.len() {
-        let mut run = 1;
-        while run < 128 && pos + run < row.len() && row[pos + run] == row[pos] {
-            run += 1;
-        }
-        if run >= 3 {
-            out.push((1 - run as i16) as i8 as u8);
-            out.push(row[pos]);
-            pos += run;
+    let mut rest = row;
+    while let Some((&first, tail)) = rest.split_first() {
+        let repeats = tail
+            .iter()
+            .take(127)
+            .take_while(|&&byte| byte == first)
+            .count();
+        if repeats >= 2 {
+            out.push(repeat_header(repeats));
+            out.push(first);
+            rest = tail.get(repeats..).unwrap_or_default();
         } else {
-            let start = pos;
-            while pos < row.len() && pos - start < 128 {
-                if pos + 2 < row.len() && row[pos] == row[pos + 1] && row[pos] == row[pos + 2] {
-                    break;
-                }
-                pos += 1;
-            }
-            out.push((pos - start - 1) as u8);
-            out.extend_from_slice(&row[start..pos]);
+            let limit = rest.len().min(128);
+            let next = rest.get(1..).unwrap_or_default();
+            let after = rest.get(2..).unwrap_or_default();
+            let len = rest
+                .iter()
+                .zip(next)
+                .zip(after)
+                .take(limit)
+                .enumerate()
+                .skip(1)
+                .find(|(_, ((a, b), c))| a == b && b == c)
+                .map_or(limit, |(i, _)| i);
+            let (literal, tail) = rest.split_at_checked(len).unwrap_or((rest, &[]));
+            out.push(literal_header(len));
+            out.extend_from_slice(literal);
+            rest = tail;
         }
     }
 }
 
+#[allow(
+    clippy::arithmetic_side_effects,
+    clippy::cast_possible_truncation,
+    reason = "repeats is 2..=127, header is 129..=254"
+)]
+fn repeat_header(repeats: usize) -> u8 {
+    (256 - repeats) as u8
+}
+
+#[allow(
+    clippy::arithmetic_side_effects,
+    clippy::cast_possible_truncation,
+    reason = "len is 1..=128, header is 0..=127"
+)]
+fn literal_header(len: usize) -> u8 {
+    (len - 1) as u8
+}
+
 pub(crate) fn decode_row(src: &[u8], width: usize, out: &mut Vec<u8>) -> Result<()> {
-    let end = out
-        .len()
-        .checked_add(width)
-        .ok_or(Error::Malformed("RLE row"))?;
-    let mut pos = 0;
-    while out.len() < end {
-        let header = *src.get(pos).ok_or(Error::Malformed("RLE row"))? as i8;
-        pos += 1;
+    let malformed = || Error::Malformed("RLE row");
+    let mut src = src;
+    let mut left = width;
+    while left != 0 {
+        let (&header, rest) = src.split_first().ok_or_else(malformed)?;
+        src = rest;
         match header {
             0..=127 => {
-                let count = header as usize + 1;
-                if count > end - out.len() || count > src.len() - pos {
-                    return Err(Error::Malformed("RLE row"));
-                }
-                out.extend_from_slice(&src[pos..pos + count]);
-                pos += count;
+                let count = usize::from(header).checked_add(1).ok_or_else(malformed)?;
+                left = left.checked_sub(count).ok_or_else(malformed)?;
+                let (literal, rest) = src.split_at_checked(count).ok_or_else(malformed)?;
+                out.extend_from_slice(literal);
+                src = rest;
             }
-            -127..=-1 => {
-                let count = (1 - i16::from(header)) as usize;
-                if count > end - out.len() {
-                    return Err(Error::Malformed("RLE row"));
-                }
-                let value = *src.get(pos).ok_or(Error::Malformed("RLE row"))?;
-                pos += 1;
-                out.resize(out.len() + count, value);
+            129..=255 => {
+                let count = 257usize
+                    .checked_sub(usize::from(header))
+                    .ok_or_else(malformed)?;
+                left = left.checked_sub(count).ok_or_else(malformed)?;
+                let (&value, rest) = src.split_first().ok_or_else(malformed)?;
+                src = rest;
+                out.extend(std::iter::repeat_n(value, count));
             }
-            -128 => {}
+            128 => {}
         }
     }
-    if src[pos..].iter().any(|&byte| byte != 0x80) {
-        return Err(Error::Malformed("RLE row"));
+    if src.iter().any(|&byte| byte != 0x80) {
+        return Err(malformed());
     }
     Ok(())
 }

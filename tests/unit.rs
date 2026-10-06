@@ -138,3 +138,4 @@ fn read_refuses() {
         Err(softpsd::Error::Malformed(_)),
     ));
 }
+

@@ -39,13 +39,9 @@ fn record_channels(record: &Record<'_>, format: Format) -> Result<Vec<Channel>> 
     let mut channels = Vec::new();
     match record {
         Record::Layer(layer) if !layer.pixels.rect.is_empty() => {
-            for (id, offset) in [(-1, 3), (0, 0), (1, 1), (2, 2)] {
-                let plane: Vec<u8> = layer
-                    .pixels
-                    .data
-                    .chunks_exact(4)
-                    .map(|pixel| pixel[offset])
-                    .collect();
+            let (pixels, _) = layer.pixels.data.as_chunks::<4>();
+            for (id, index) in [(-1, 3), (0, 0), (1, 1), (2, 2)] {
+                let plane = component(pixels, index);
                 channels.push(Channel {
                     id,
                     data: encode_plane(&plane, layer.pixels.rect, format)?,
@@ -75,29 +71,68 @@ fn record_channels(record: &Record<'_>, format: Format) -> Result<Vec<Channel>> 
     Ok(channels)
 }
 
-// Requires a validated plane buffer.
+// One match per plane, not per pixel: each arm is its own loop.
+fn component(pixels: &[[u8; 4]], index: usize) -> Vec<u8> {
+    match index {
+        0 => pixels.iter().map(|[r, ..]| *r).collect(),
+        1 => pixels.iter().map(|[_, g, ..]| *g).collect(),
+        2 => pixels.iter().map(|[_, _, b, _]| *b).collect(),
+        _ => pixels.iter().map(|[.., a]| *a).collect(),
+    }
+}
+
+fn component_over_white(pixels: &[[u8; 4]], index: usize) -> Vec<u8> {
+    match index {
+        0 => pixels.iter().map(|[r, .., a]| over_white(*r, *a)).collect(),
+        1 => pixels
+            .iter()
+            .map(|[_, g, _, a]| over_white(*g, *a))
+            .collect(),
+        2 => pixels
+            .iter()
+            .map(|[_, _, b, a]| over_white(*b, *a))
+            .collect(),
+        _ => component(pixels, index),
+    }
+}
+
 fn encode_plane(data: &[u8], rect: Rect, format: Format) -> Result<Vec<u8>> {
+    let (counts, rows) = encode_rows(data, rect, format)?;
+    let mut channel = Vec::with_capacity(counts.len().saturating_add(rows.len()).saturating_add(2));
+    channel.extend_from_slice(&1u16.to_be_bytes());
+    channel.extend_from_slice(&counts);
+    channel.extend_from_slice(&rows);
+    Ok(channel)
+}
+
+// Row byte counts and PackBits rows, kept apart: the merged image stores every channel's counts first.
+fn encode_rows(data: &[u8], rect: Rect, format: Format) -> Result<(Vec<u8>, Vec<u8>)> {
     let width = rect.width();
-    let mut channel = Vec::from(1u16.to_be_bytes());
+    let mut channel = Vec::new();
     let mut rows = Vec::new();
-    for y in 0..rect.height() {
+    let mut rest = data;
+    for _ in 0..rect.height() {
+        let (row, tail) = rest
+            .split_at_checked(width)
+            .ok_or(Error::Malformed("plane size"))?;
+        rest = tail;
         let start = rows.len();
-        rle::encode_row(&data[y * width..(y + 1) * width], &mut rows);
+        rle::encode_row(row, &mut rows);
+        let encoded = rows.len().saturating_sub(start);
         match format {
             Format::Psd => {
-                let count = u16::try_from(rows.len() - start)
-                    .map_err(|_| Error::Unsupported("RLE row length"))?;
+                let count =
+                    u16::try_from(encoded).map_err(|_| Error::Unsupported("RLE row length"))?;
                 channel.extend_from_slice(&count.to_be_bytes());
             }
             Format::Psb => {
-                let count = u32::try_from(rows.len() - start)
-                    .map_err(|_| Error::Unsupported("RLE row length"))?;
+                let count =
+                    u32::try_from(encoded).map_err(|_| Error::Unsupported("RLE row length"))?;
                 channel.extend_from_slice(&count.to_be_bytes());
             }
         }
     }
-    channel.extend_from_slice(&rows);
-    Ok(channel)
+    Ok((channel, rows))
 }
 
 pub fn write(doc: &Document, format: Format, out: &mut impl std::io::Write) -> Result<()> {
@@ -108,16 +143,17 @@ pub fn write(doc: &Document, format: Format, out: &mut impl std::io::Write) -> R
     let channels = prepare_channels(&records, format)?;
     let mut layer_records = Vec::new();
     let mut layer_info_len = 2usize;
-    for (index, (record, channels)) in records.iter().zip(&channels).enumerate() {
-        let bytes = encode_record(record, channels, index as u32 + 1, format)?;
+    for (id, (record, channels)) in (1u32..).zip(records.iter().zip(&channels)) {
+        let bytes = encode_record(record, channels, id, format)?;
         layer_info_len = add_length(layer_info_len, bytes.len())?;
         layer_records.push(bytes);
         for channel in channels {
             layer_info_len = add_length(layer_info_len, channel.data.len())?;
         }
     }
-    let padding = (4 - layer_info_len % 4) % 4;
-    let layer_info_len = add_length(layer_info_len, padding)? as u64;
+    let padding = layer_info_len.wrapping_neg() % 4;
+    let layer_info_len = u64::try_from(add_length(layer_info_len, padding)?)
+        .map_err(|_| Error::Unsupported("section length"))?;
     let layer_mask_len = layer_info_len
         .checked_add(if format == Format::Psd { 8 } else { 12 })
         .ok_or(Error::Unsupported("section length"))?;
@@ -130,7 +166,9 @@ pub fn write(doc: &Document, format: Format, out: &mut impl std::io::Write) -> R
     let version: u16 = if format == Format::Psd { 1 } else { 2 };
     let channel_count: u16 = if doc.channels == Channels::Rgb { 3 } else { 4 };
     let count = if doc.channels == Channels::Rgba {
-        -count
+        count
+            .checked_neg()
+            .ok_or(Error::Unsupported("layer count"))?
     } else {
         count
     };
@@ -157,17 +195,15 @@ pub fn write(doc: &Document, format: Format, out: &mut impl std::io::Write) -> R
             out.write_all(&channel.data)?;
         }
     }
-    out.write_all(&[0; 3][..padding])?;
+    out.write_all([0; 3].get(..padding).unwrap_or_default())?;
     out.write_all(&0u32.to_be_bytes())?;
 
     out.write_all(&1u16.to_be_bytes())?;
-    let count_size = if format == Format::Psd { 2 } else { 4 };
-    let row_counts_end = 2 + doc.height as usize * count_size;
-    for channel in &merged {
-        out.write_all(&channel[2..row_counts_end])?;
+    for (counts, _) in &merged {
+        out.write_all(counts)?;
     }
-    for channel in &merged {
-        out.write_all(&channel[row_counts_end..])?;
+    for (_, rows) in &merged {
+        out.write_all(rows)?;
     }
     Ok(())
 }
@@ -240,10 +276,19 @@ fn resource(out: &mut Vec<u8>, id: u16, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "validate bounds it to 1..=u32::MAX"
+)]
+fn fixed_dpi(dpi: f32) -> u32 {
+    (f64::from(dpi) * 65_536.0).round() as u32
+}
+
 fn image_resources(doc: &Document) -> Result<Vec<u8>> {
     let mut resources = Vec::new();
     if let Some(dpi) = doc.resolution_dpi {
-        let fixed = (f64::from(dpi) * 65_536.0).round() as u32;
+        let fixed = fixed_dpi(dpi);
         let mut resolution = Vec::new();
         for _ in 0..2 {
             resolution.extend_from_slice(&fixed.to_be_bytes());
@@ -311,7 +356,7 @@ fn encode_record(
         extra.extend_from_slice(&20u32.to_be_bytes());
         rect_bytes(mask.rect, &mut extra);
         extra.push(mask.default);
-        extra.push(u8::from(mask.disabled) * 0x02);
+        extra.push(if mask.disabled { 0x02 } else { 0 });
         extra.extend_from_slice(&[0, 0]);
     } else {
         extra.extend_from_slice(&0u32.to_be_bytes());
@@ -325,7 +370,7 @@ fn encode_record(
         .take(31)
         .map(|c| if c.is_ascii() { c as u8 } else { b'?' })
         .collect();
-    extra.push(pascal.len() as u8);
+    extra.push(u8::try_from(pascal.len()).map_err(|_| Error::Malformed("layer name"))?);
     extra.extend_from_slice(&pascal);
     pad(&mut extra, 4);
     let mut name_data = unicode(name)?;
@@ -351,7 +396,9 @@ fn encode_record(
 
     let mut bytes = Vec::new();
     rect_bytes(rect, &mut bytes);
-    bytes.extend_from_slice(&(channels.len() as u16).to_be_bytes());
+    let channel_count =
+        u16::try_from(channels.len()).map_err(|_| Error::Unsupported("channel count"))?;
+    bytes.extend_from_slice(&channel_count.to_be_bytes());
     for channel in channels {
         bytes.extend_from_slice(&channel.id.to_be_bytes());
         write_length(&mut bytes, channel.data.len() as u64, format)?;
@@ -360,7 +407,7 @@ fn encode_record(
     bytes.extend_from_slice(&blend.key());
     bytes.push(opacity);
     bytes.push(u8::from(clipped));
-    let mut flags = 0x08 | (u8::from(!visible) * 0x02);
+    let mut flags = if visible { 0x08 } else { 0x0a };
     if !matches!(record, Record::Layer(_)) {
         flags |= 0x10;
     }
@@ -370,25 +417,26 @@ fn encode_record(
     Ok(bytes)
 }
 
-fn merged_channels(doc: &Document, format: Format) -> Result<Vec<Vec<u8>>> {
+fn merged_channels(doc: &Document, format: Format) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
+    let (pixels, _) = doc.merged.data.as_chunks::<4>();
     let count = if doc.channels == Channels::Rgb { 3 } else { 4 };
     (0..count)
-        .map(|offset| {
-            let plane: Vec<u8> = doc
-                .merged
-                .data
-                .chunks_exact(4)
-                .map(|pixel| {
-                    if offset == 3 || doc.channels == Channels::Rgb {
-                        pixel[offset]
-                    } else {
-                        let c = u32::from(pixel[offset]);
-                        let a = u32::from(pixel[3]);
-                        ((c * a + 255 * (255 - a) + 127) / 255) as u8
-                    }
-                })
-                .collect();
-            encode_plane(&plane, doc.merged.rect, format)
+        .map(|index| {
+            let plane = match doc.channels {
+                Channels::Rgb => component(pixels, index),
+                Channels::Rgba => component_over_white(pixels, index),
+            };
+            encode_rows(&plane, doc.merged.rect, format)
         })
         .collect()
+}
+
+#[allow(
+    clippy::arithmetic_side_effects,
+    clippy::cast_possible_truncation,
+    reason = "u8 inputs keep every step inside u32 and the quotient at most 255"
+)]
+fn over_white(colour: u8, alpha: u8) -> u8 {
+    let (c, a) = (u32::from(colour), u32::from(alpha));
+    ((c * a + 255 * (255 - a) + 127) / 255) as u8
 }

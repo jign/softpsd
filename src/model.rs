@@ -62,14 +62,14 @@ pub struct Rect {
 }
 
 impl Rect {
-    /// Returns zero for an inverted horizontal extent.
+    /// Returns zero for an inverted horizontal extent. Saturates at `usize::MAX` on 32-bit targets.
     pub fn width(&self) -> usize {
-        (i64::from(self.right) - i64::from(self.left)).max(0) as usize
+        extent(self.left, self.right)
     }
 
-    /// Returns zero for an inverted vertical extent.
+    /// Returns zero for an inverted vertical extent. Saturates at `usize::MAX` on 32-bit targets.
     pub fn height(&self) -> usize {
-        (i64::from(self.bottom) - i64::from(self.top)).max(0) as usize
+        extent(self.top, self.bottom)
     }
 
     /// Returns None if the pixel count exceeds usize.
@@ -80,6 +80,11 @@ impl Rect {
     pub fn is_empty(&self) -> bool {
         self.bottom <= self.top || self.right <= self.left
     }
+}
+
+fn extent(start: i32, end: i32) -> usize {
+    let span = i64::from(end).saturating_sub(i64::from(start)).max(0);
+    usize::try_from(span).unwrap_or(usize::MAX)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
