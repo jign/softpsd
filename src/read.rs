@@ -716,7 +716,45 @@ fn padding4(length: u64) -> u64 {
     length.wrapping_neg() % 4
 }
 
+fn rect_pixels(rect: Rect) -> Option<u64> {
+    let width = i64::from(rect.right)
+        .checked_sub(i64::from(rect.left))?
+        .max(0);
+    let height = i64::from(rect.bottom)
+        .checked_sub(i64::from(rect.top))?
+        .max(0);
+    u64::try_from(width)
+        .ok()?
+        .checked_mul(u64::try_from(height).ok()?)
+}
+
+// Pixel bytes of the returned document. None means past u64.
+fn decoded_size(records: &LayerRecords<'_>, header: Header) -> Option<u64> {
+    let merged = u64::from(header.width)
+        .checked_mul(u64::from(header.height))?
+        .checked_mul(4)?;
+    let mut total = if records.section.is_none() {
+        merged.checked_mul(2)?
+    } else {
+        merged
+    };
+    for record in &records.records {
+        total = total.checked_add(rect_pixels(record.rect)?.checked_mul(4)?)?;
+        if let Some(mask) = &record.mask {
+            total = total.checked_add(rect_pixels(mask.rect)?)?;
+        }
+    }
+    Some(total)
+}
+
+/// Reads a document. Same as `read_with_limit` with no cap.
 pub fn read(input: &[u8]) -> Result<Document> {
+    read_with_limit(input, u64::MAX)
+}
+
+/// Reads a document, refusing before any pixel allocation when its pixel buffers would exceed
+/// `limit` bytes. Decoding holds one layer's planes on top of that.
+pub fn read_with_limit(input: &[u8], limit: u64) -> Result<Document> {
     let header = read_header(input)?;
     if header.depth != 8 {
         return Err(Error::Unsupported("depth"));
@@ -740,6 +778,10 @@ pub fn read(input: &[u8]) -> Result<Document> {
     cursor.skip(colour_len)?;
     let resources = read_resources(&mut cursor)?;
     let records = read_layer_records(&mut cursor, header)?;
+    let needed = decoded_size(&records, header).unwrap_or(u64::MAX);
+    if needed > limit {
+        return Err(Error::OverLimit { needed, limit });
+    }
     let layers = read_channel_data(records, header.format)?;
     let mut tree = build_tree(layers.layers)?;
     let merged = read_merged(&mut cursor, header, layers.channels)?;

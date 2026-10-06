@@ -139,3 +139,41 @@ fn read_refuses() {
     ));
 }
 
+#[test]
+fn read_with_limit_refuses_above_the_cap() {
+    for &name in fixtures::names() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "tests/fixtures/ps27-{name}.{}",
+            fixtures::extension(name)
+        ));
+        let bytes = std::fs::read(path).unwrap();
+        let Err(softpsd::Error::OverLimit { needed, .. }) = softpsd::read_with_limit(&bytes, 0)
+        else {
+            panic!("fixture {name}: no refusal at zero");
+        };
+        let doc = softpsd::read(&bytes).unwrap();
+        let pixels = |image: &Image| image.data.len() as u64;
+        fn walk(nodes: &[Node], total: &mut u64) {
+            for node in nodes {
+                match node {
+                    Node::Layer(layer) => {
+                        *total += layer.pixels.data.len() as u64;
+                        *total += layer.mask.as_ref().map_or(0, |m| m.data.len() as u64);
+                    }
+                    Node::Group(group) => {
+                        *total += group.mask.as_ref().map_or(0, |m| m.data.len() as u64);
+                        walk(&group.children, total);
+                    }
+                }
+            }
+        }
+        let mut total = pixels(&doc.merged);
+        walk(&doc.layers, &mut total);
+        assert_eq!(
+            needed, total,
+            "fixture {name}: needed is the document's pixel bytes"
+        );
+        assert!(softpsd::read_with_limit(&bytes, needed).unwrap() == doc);
+        assert!(softpsd::read_with_limit(&bytes, needed - 1).is_err());
+    }
+}

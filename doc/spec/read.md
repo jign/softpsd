@@ -2,6 +2,7 @@
 
 ```rust
 pub fn read(input: &[u8]) -> Result<Document>;
+pub fn read_with_limit(input: &[u8], limit: u64) -> Result<Document>;
 pub fn read_header(input: &[u8]) -> Result<Header>;   // cheap: format, size, depth, mode
 ```
 
@@ -40,6 +41,9 @@ pub fn read_header(input: &[u8]) -> Result<Header>;   // cheap: format, size, de
   decode stops at the row's byte count and the row's width, whichever comes first, and a
   short row is `Error::Malformed`. No recursion deeper than the group nesting, which is
   capped at 64.
+- `read_with_limit` sums the pixel bytes the document will hold (layers, masks, merged image)
+  from the layer records, before any pixel allocation, and returns `Error::OverLimit` when the
+  sum passes `limit`.
 
 ## Growth
 

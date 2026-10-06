@@ -28,7 +28,7 @@ mod validate;
 mod write;
 
 pub use model::{Blend, Channels, Document, Group, Image, Layer, Mask, Node, Rect};
-pub use read::{Header, read, read_header};
+pub use read::{Header, read, read_header, read_with_limit};
 pub use write::{format_for, write};
 
 /// File format: PSD, or PSB above 30,000 px on either side.
@@ -50,6 +50,11 @@ pub enum Error {
         reason: &'static str,
     },
     Malformed(&'static str),
+    /// Pixel bytes the document would decode to, and the cap passed to `read_with_limit`.
+    OverLimit {
+        needed: u64,
+        limit: u64,
+    },
 }
 
 impl From<std::io::Error> for Error {
@@ -67,6 +72,9 @@ impl std::fmt::Display for Error {
                 write!(f, "unsupported layer '{name}': {reason}")
             }
             Error::Malformed(s) => write!(f, "malformed: {s}"),
+            Error::OverLimit { needed, limit } => {
+                write!(f, "decoded size {needed} bytes over the {limit} byte limit")
+            }
         }
     }
 }
