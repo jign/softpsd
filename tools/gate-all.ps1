@@ -27,6 +27,8 @@ try {
     Invoke-Check { & cargo test }
     $step = 'cargo package'
     Invoke-Check { & cargo package --allow-dirty --quiet }
+    $step = 'fuzz'
+    Invoke-Check { & cargo run --release --quiet --example fuzz -- 7 200000 }
     $step = 'fixture gates'
     Invoke-Check { & (Join-Path $PSScriptRoot 'gate-fixtures.ps1') }
     if (Test-Path -LiteralPath (Join-Path $root 'corpus')) {

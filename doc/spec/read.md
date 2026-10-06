@@ -44,6 +44,8 @@ pub fn read_header(input: &[u8]) -> Result<Header>;   // cheap: format, size, de
 - `read_with_limit` sums the pixel bytes the document will hold (layers, masks, merged image)
   from the layer records, before any pixel allocation, and returns `Error::OverLimit` when the
   sum passes `limit`.
+- Never panics. The library denies every panicking construct in clippy; `examples/fuzz.rs`
+  mutates the fixtures and runs in the release gate.
 
 ## Growth
 
