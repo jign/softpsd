@@ -12,4 +12,4 @@ A finding that changes a spec corrects the spec in the same commit.
 | 5 Soft Edge export | in the Soft Edge repo: git `rev` dependency, tree to model mapping, PSB switch, one-way notice; measure gamma blending against Photoshop | an 8K export opens in Photoshop and matches |
 | 6 Publish | benches, README, notice down, `publish = true`, 0.1.0 | on crates.io |
 
-Phases 1 to 5 are green. Phase 6 (publish) is next.
+Phases 1 to 5 are green. Phase 6 (publish) is planned in `phase6/plan.md`.
