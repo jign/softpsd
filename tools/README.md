@@ -7,6 +7,9 @@ per machine. Nothing external is committed.
 It also adds the `wasm32-unknown-unknown` and `wasm32-wasip1` targets and a pinned wasmtime in
 `tools/wasmtime/`; `.cargo/config.toml` runs `wasm32-wasip1` binaries through it.
 
+`compare-agpsd/` is its own Cargo project: the bench documents through softpsd and ag-psd-rs.
+`cargo run --release` inside it. Results in `doc/lab/bench.md`.
+
 - `photoshop/run.ps1 <script.jsx> [-Out <file>]` runs a script in the open Photoshop and prints its result. `-Out` reaches the script as `OUT`.
 - `photoshop/fixtures/smoke.jsx` builds the reference fixture and saves it to `OUT`.
 - `readers/psd-tools-dump.py <file>` and `readers/ag-psd-dump.js <file>` print a file's tree

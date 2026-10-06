@@ -4,10 +4,9 @@ Goal: a PSD/PSB library that never panics, never aborts on a hostile file, runs 
 first-class target, and writes large documents with the least working memory we can reach.
 Public on GitHub, tagged `v0.1.0`, used as a git dependency. Not published to crates.io.
 
-Position against ag-psd-rs, measured natively on 26 layers at 8000 x 8000: both pass our
-Photoshop writer gate on all twelve fixtures. softpsd writes in 7.7 s with 1.6 GB of working
-heap; ag-psd-rs takes 20.9 s and ~10 GB, panics on bad input, and cannot embed an ICC
-profile. ag-psd-rs covers far more of the format. We do not compete on features; we compete
+Position against ag-psd-rs: both pass our Photoshop writer gate on all twelve fixtures. At
+8000 x 8000, dense, both write in about 7 s; ag-psd-rs needs 9.5 GB of write heap to our
+1.7 GB, panics on bad input, and cannot embed an ICC profile. Numbers in `doc/lab/bench.md`. ag-psd-rs covers far more of the format. We do not compete on features; we compete
 on memory, speed and failure behaviour.
 
 In chunks, reviewed once per chunk. One commit per item, one line each.
