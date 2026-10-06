@@ -4,12 +4,12 @@
 
 #![forbid(unsafe_code)]
 
-pub mod blend;
-pub mod model;
-pub mod read;
-pub mod rle;
-pub mod validate;
-pub mod write;
+mod blend;
+mod model;
+mod read;
+mod rle;
+mod validate;
+mod write;
 
 pub use model::{Blend, Channels, Document, Group, Image, Layer, Mask, Node, Rect};
 pub use read::{Header, read, read_header};

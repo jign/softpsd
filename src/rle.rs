@@ -2,7 +2,7 @@
 
 use crate::{Error, Result};
 
-pub fn encode_row(row: &[u8], out: &mut Vec<u8>) {
+pub(crate) fn encode_row(row: &[u8], out: &mut Vec<u8>) {
     let mut pos = 0;
     while pos < row.len() {
         let mut run = 1;
@@ -27,7 +27,7 @@ pub fn encode_row(row: &[u8], out: &mut Vec<u8>) {
     }
 }
 
-pub fn decode_row(src: &[u8], width: usize, out: &mut Vec<u8>) -> Result<()> {
+pub(crate) fn decode_row(src: &[u8], width: usize, out: &mut Vec<u8>) -> Result<()> {
     let end = out
         .len()
         .checked_add(width)
@@ -61,4 +61,28 @@ pub fn decode_row(src: &[u8], width: usize, out: &mut Vec<u8>) -> Result<()> {
         return Err(Error::Malformed("RLE row"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rle_round_trip() {
+        let literals: Vec<u8> = (0..=255).cycle().take(300).collect();
+        let mut mixed = vec![42; 100];
+        mixed.extend_from_slice(&literals);
+        mixed.extend([17; 300]);
+        for row in [vec![42; 100], literals, vec![17; 300], mixed, Vec::new()] {
+            let mut encoded = Vec::new();
+            encode_row(&row, &mut encoded);
+            let mut decoded = Vec::new();
+            decode_row(&encoded, row.len(), &mut decoded).unwrap();
+            assert_eq!(decoded, row);
+            encoded.extend([0x80, 0x80]);
+            decoded.clear();
+            decode_row(&encoded, row.len(), &mut decoded).unwrap();
+            assert_eq!(decoded, row);
+        }
+    }
 }

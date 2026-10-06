@@ -2,7 +2,7 @@
 
 use crate::{Blend, Document, Error, Format, Mask, Node, Rect, Result};
 
-pub fn validate(doc: &Document, format: Format) -> Result<()> {
+pub(crate) fn validate(doc: &Document, format: Format) -> Result<()> {
     let side_limit = match format {
         Format::Psd => 30_000,
         Format::Psb => 300_000,
