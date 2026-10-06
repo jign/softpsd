@@ -9,6 +9,60 @@ depend on it through git:
 softpsd = { git = "https://github.com/jign/softpsd", tag = "v0.1.0" }
 ```
 
+## Use
+
+Write. softpsd stores the merged image you give it; it does not composite. `write` streams to
+any `Write + Seek`: a file, or a `Vec` through `Cursor`.
+
+```rust
+use softpsd::{Blend, Channels, Document, Image, Layer, Node, Rect};
+
+fn main() -> softpsd::Result<()> {
+    let page = Rect { top: 0, left: 0, bottom: 64, right: 64 };
+    let red = Image { rect: page, data: [255, 0, 0, 255].repeat(64 * 64) };
+    let layer = Layer {
+        name: String::from("Red"),
+        visible: true,
+        opacity: 255,
+        blend: Blend::Normal,
+        clip_to_below: false,
+        pixels: red.clone(),
+        mask: None,
+    };
+    let doc = Document {
+        width: 64,
+        height: 64,
+        channels: Channels::Rgba,
+        icc_profile: None,
+        resolution_dpi: Some(72.0),
+        layers: vec![Node::Layer(layer)],
+        merged: red,
+    };
+    let mut out = std::io::Cursor::new(Vec::new());
+    softpsd::write(&doc, softpsd::format_for(64, 64), &mut out)?;
+    Ok(())
+}
+```
+
+Read. `read_with_limit` refuses before allocating when the pixels would pass the cap; a wasm
+host sets it from its free heap.
+
+```rust,no_run
+use softpsd::Node;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = std::fs::read("art.psd")?;
+    let doc = softpsd::read_with_limit(&bytes, 1 << 30)?;
+    for node in &doc.layers {
+        match node {
+            Node::Layer(layer) => println!("{}", layer.name),
+            Node::Group(group) => println!("{}/", group.name),
+        }
+    }
+    Ok(())
+}
+```
+
 ## Goals
 
 - Never panic. A hostile or broken file returns an `Error`.

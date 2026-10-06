@@ -75,16 +75,24 @@ impl<'a> Cursor<'a> {
     }
 }
 
+/// What a file says it is, before any refusal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header {
+    /// PSD or PSB.
     pub format: Format,
+    /// Width in pixels.
     pub width: u32,
+    /// Height in pixels.
     pub height: u32,
+    /// Channels in the merged image, as stored.
     pub channel_count: u16,
+    /// Bits per channel, as stored.
     pub depth: u16,
+    /// Photoshop's colour mode number, as stored. 3 is RGB.
     pub color_mode: u16,
 }
 
+/// Reads the 26-byte header only. Reports files that `read` refuses.
 pub fn read_header(input: &[u8]) -> Result<Header> {
     let header: &[u8; 26] = input
         .get(..26)

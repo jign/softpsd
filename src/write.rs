@@ -275,6 +275,7 @@ pub fn write<W: Write + Seek>(doc: &Document, format: Format, out: &mut W) -> Re
     Ok(())
 }
 
+/// PSD up to 30,000 px per side, PSB above.
 pub fn format_for(width: u32, height: u32) -> Format {
     if width > 30_000 || height > 30_000 {
         Format::Psb

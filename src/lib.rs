@@ -1,8 +1,6 @@
-//! Read and write Adobe Photoshop PSD and PSB files.
-//!
-//! Write path first. The reader covers what the writer emits and refuses the rest.
-
+#![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
+#![deny(missing_docs)]
 #![cfg_attr(
     not(test),
     deny(
@@ -40,19 +38,28 @@ pub enum Format {
     Psb,
 }
 
+/// Why a read or write failed.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
+    /// The writer's output failed.
     Io(std::io::Error),
+    /// Valid PSD that softpsd does not handle, with the reason.
     Unsupported(&'static str),
+    /// A layer kind softpsd does not handle, such as text or a smart object.
     UnsupportedLayer {
+        /// The layer's name, so the user can find it.
         name: String,
+        /// What the layer is.
         reason: &'static str,
     },
+    /// Broken input: a truncated file, or a document that breaks the model's rules.
     Malformed(&'static str),
-    /// Pixel bytes the document would decode to, and the cap passed to `read_with_limit`.
+    /// The document's pixel buffers would pass the cap given to `read_with_limit`.
     OverLimit {
+        /// Pixel bytes the document would decode to.
         needed: u64,
+        /// The cap.
         limit: u64,
     },
 }
@@ -81,4 +88,5 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// `Result` with softpsd's `Error`.
 pub type Result<T> = std::result::Result<T, Error>;
