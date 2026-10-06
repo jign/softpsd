@@ -28,6 +28,10 @@ try {
     Invoke-Check { & cargo clippy --all-targets }
     $step = 'cargo test'
     Invoke-Check { & cargo test }
+    $step = 'cargo doc'
+    $env:RUSTDOCFLAGS = '-D warnings'
+    Invoke-Check { & cargo doc --no-deps --quiet }
+    Remove-Item Env:RUSTDOCFLAGS
     $step = 'cargo package'
     Invoke-Check { & cargo package --allow-dirty --quiet }
     $step = 'fuzz'
