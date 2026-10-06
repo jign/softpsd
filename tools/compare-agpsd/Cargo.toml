@@ -1,0 +1,11 @@
+[package]
+name = "compare-agpsd"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+ag-psd = "=0.3.0"
+softpsd = { path = "../.." }
+
+[workspace]
