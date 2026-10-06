@@ -25,6 +25,8 @@ try {
     Invoke-Check { & cargo clippy --all-targets }
     $step = 'cargo test'
     Invoke-Check { & cargo test }
+    $step = 'cargo package'
+    Invoke-Check { & cargo package --allow-dirty --quiet }
     $step = 'fixture gates'
     Invoke-Check { & (Join-Path $PSScriptRoot 'gate-fixtures.ps1') }
     if (Test-Path -LiteralPath (Join-Path $root 'corpus')) {
